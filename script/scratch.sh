@@ -1,0 +1,1 @@
+zig build run -Dlog-level=debug -freference-trace -- -z -I ~/Downloads/flatbuffers/tests/include_test ~/Downloads/flatbuffers/tests/monster_test.fbs

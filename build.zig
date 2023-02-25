@@ -12,12 +12,15 @@ pub fn build(b: *std.Build) void {
     const build_options = b.addOptions();
     build_options.addOption(std.log.Level, "log_level", log_level);
 
+    const lib = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
+
     const exe = b.addExecutable(.{
         .name = "flatbuffers-zig",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
+    exe.addModule("flatbuffers", lib);
     exe.addOptions("build_options", build_options);
     exe.install();
 
@@ -30,7 +33,6 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const lib = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
     const exe_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/tests.zig" },
         .target = target,

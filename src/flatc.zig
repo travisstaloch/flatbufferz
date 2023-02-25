@@ -4,10 +4,10 @@ const idl_parser = @import("idl_parser.zig");
 const Parser = idl_parser.Parser;
 const StringList = std.ArrayListUnmanaged([]const u8);
 const idl = @import("idl.zig");
-
 const code_generator = @import("code_generator.zig");
 const CodeGenerator = code_generator.CodeGenerator;
-const common = @import("common.zig");
+const fb = @import("flatbuffers");
+const common = fb.common;
 const todo = common.todo;
 const util = @import("util.zig");
 const posixPath = util.posixPath;

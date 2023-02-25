@@ -1,5 +1,6 @@
 const std = @import("std");
-const common = @import("common.zig");
+const fb = @import("flatbuffers");
+const common = fb.common;
 const todo = common.todo;
 const idl = @import("idl.zig");
 const idl_parser = @import("idl_parser.zig");

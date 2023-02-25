@@ -1,5 +1,6 @@
 const std = @import("std");
-const common = @import("common.zig");
+const fb = @import("flatbuffers");
+const common = fb.common;
 const todo = common.todo;
 // Utility class to assist in generating code through use of text templates.
 //

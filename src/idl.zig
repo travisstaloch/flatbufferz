@@ -67,8 +67,8 @@ pub const BaseType = enum(u5) {
     }
     pub fn typeName(t: BaseType) []const u8 {
         return switch (t) {
-            .NONE => "",
-            .UTYPE => "",
+            .NONE => "none",
+            .UTYPE => "utype",
             .BOOL => "bool",
             .CHAR => "byte",
             .UCHAR => "ubyte",
@@ -81,10 +81,10 @@ pub const BaseType = enum(u5) {
             .FLOAT => "float",
             .DOUBLE => "double",
             .STRING => "string",
-            .VECTOR => "",
-            .STRUCT => "",
-            .UNION => "",
-            .ARRAY => "",
+            .VECTOR => "vector",
+            .STRUCT => "struct",
+            .UNION => "union",
+            .ARRAY => "array",
         };
     }
     pub fn sizeOf(t: BaseType) u32 {
@@ -210,8 +210,8 @@ pub const Options = struct {
     // java_checkerframework: bool = false,
     // gen_generated: bool = false,
     // gen_json_coders: bool = false,
-    // object_prefix: []const u8 ,
-    // object_suffix: []const u8 ,
+    object_prefix: []const u8 = "",
+    object_suffix: []const u8 = "",
     union_value_namespacing: bool = true,
     allow_non_utf8: bool = false,
     // natural_utf8: bool = false,
@@ -233,7 +233,7 @@ pub const Options = struct {
     // cpp_std: []const u8 ,
     // cpp_static_reflection: bool = false,
     // proto_namespace_suffix: []const u8 ,
-    // filename_suffix: []const u8 ,
+    filename_suffix: []const u8 = "",
     // filename_extension: []const u8 ,
     no_warnings: bool = false,
     warnings_as_errors: bool = false,
@@ -259,8 +259,8 @@ pub const Options = struct {
 
     // // If set, implement serde::Serialize for generated Rust types
     // bool rust_serialize;
-    // // If set, generate rust types in individual files with a root module file.
-    // bool rust_module_root_file;
+    // If set, generate zig types in individual files with a root module file.
+    zig_module_root_file: bool = false,
     // // The corresponding language bit will be set if a language is included
     // // for code generation.
     // unsigned long lang_to_generate;
@@ -559,16 +559,13 @@ pub fn SymbolTable(comptime T: type) type {
 pub const Namespace = struct {
     // Namespace() : from_table(0) {}
 
-    // Given a (potentially unqualified) name, return the "fully qualified" name
-    // which has a full namespaced descriptor.
-    // With max_components you can request less than the number of components
-    // the current namespace has.
-    // []const u8 GetFullyQualifiedName(const []const u8 &name,
-    //                                   usize max_components = 1000) const;
-
     components: std.ArrayListUnmanaged([]const u8) = .{},
     from_table: usize = 0, // Part of the namespace corresponds to a message/table.
 
+    /// Given a (potentially unqualified) name, return the "fully qualified" name
+    /// which has a full namespaced descriptor.
+    /// With max_components you can request less than the number of components
+    /// the current namespace has.
     pub fn getFullyQualifiedName(
         n: Namespace,
         alloc: mem.Allocator,

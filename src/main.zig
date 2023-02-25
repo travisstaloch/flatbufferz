@@ -13,7 +13,7 @@ pub fn main() !void {
     _flatc.program_name = args[0];
     var flatc = Compiler{ .params = &_flatc.params, .allocator = alloc };
 
-    var zig_code_generator = idl_gen_zig.init();
+    var zig_code_generator = idl_gen_zig.init(alloc);
     try flatc.registerCodeGenerator(
         _flatc.Option.init(
             "z",

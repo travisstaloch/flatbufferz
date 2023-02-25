@@ -653,10 +653,12 @@ pub const Parser = struct {
             if (!match and is_tok_string and in_type.isScalar() and
                 !p.state.attr_is_trivial_ascii_string_)
             {
-                return p.err("type mismatch or invalid value, an initializer of " ++
-                    "non-string field must be trivial ASCII string: type: {s}" ++
-                    ", name: {s}" ++
-                    ", value: {s}", .{ in_type.typeName(), name, p.state.attribute_.items });
+                return p.err(
+                    "type mismatch or invalid value, an initializer of " ++
+                        "non-string field must be trivial ASCII string: type: {s}" ++
+                        ", name: {s}, value: {s}",
+                    .{ in_type.typeName(), name, p.state.attribute_.items },
+                );
             }
 
             // A boolean as true/false. Boolean as Integer check below.
@@ -1377,6 +1379,10 @@ pub const Parser = struct {
         ty.* = Type.init(.STRUCT, struct_def, null, 0);
         if (try p.types_.add(p.alloc, qualified_name, ty))
             return p.err("datatype already exists: {s}", .{qualified_name});
+        std.log.debug("parsed struct {s}", .{struct_def.base.name});
+        for (struct_def.fields.vec.items) |f| {
+            std.log.debug("{s}: {s}", .{ f.base.name, f.value.type.base_type.typeName() });
+        }
     }
     fn parseService(p: *Parser, filename: []const u8) !void {
         const service_comment = p.state.doc_comment_;
@@ -1651,7 +1657,7 @@ pub const Parser = struct {
                 ev.doc_comment = p.state.doc_comment_;
                 try p.expect(Token.Identifier.int());
 
-                std.log.debug("full_name='{s}' is_union={}", .{ full_name.items, is_union });
+                // std.log.debug("full_name='{s}' is_union={}", .{ full_name.items, is_union });
                 if (is_union) {
                     try p.parseNamespacing(&full_name, &ev.name);
                     if (p.opts.union_value_namespacing) {
@@ -1667,7 +1673,7 @@ pub const Parser = struct {
                             ev.union_type.base_type != .STRING)
                             return p.err("union value type may only be table/struct/string", .{});
                     } else {
-                        std.log.debug("setting ev.union_type ", .{});
+                        // std.log.debug("setting ev.union_type ", .{});
                         ev.union_type = Type.init(.STRUCT, try p.lookupCreateStruct(try full_name.toOwnedSlice(), .{}), null, 0);
                     }
                     if (!enum_def.uses_multiple_type_instances) {
@@ -1694,6 +1700,10 @@ pub const Parser = struct {
                 }
 
                 try evb.acceptEnumerator_();
+                if (true) {
+                    const e = enum_def.vals.vec.getLast();
+                    std.log.debug("value name={s} value={} union_type={s}", .{ e.name, e.value, e.union_type.base_type.typeName() });
+                }
             }
             if (!p.is(if (p.opts.proto_mode) ';' else ',')) break;
             try p.next();

@@ -78,8 +78,7 @@ fn _err(
 ) noreturn {
     const flatc = common.ptrAlignCast(*const Compiler, ptr);
     if (opts.show_exe) std.debug.print("{s}", .{program_name.?});
-    if (opts.usage)
-        flatc.printShortUsageString();
+    if (opts.usage) flatc.printShortUsageString();
     std.debug.print("error: " ++ fmt, args);
     std.os.exit(1);
 }
@@ -108,6 +107,7 @@ pub const Compiler = struct {
         warn_fn: WarnFn,
         err_fn: ErrFn,
     };
+
     const GopResult = CodeGeneratorMap.GetOrPutResult;
     pub fn getOrPutCodeGenerator(
         flatc: *Compiler,
@@ -126,7 +126,7 @@ pub const Compiler = struct {
         while (i < args.len) : (i += 1) {
             const arg = args[i];
             if (arg[0] == '-') {
-                if (mem.eql(u8, arg[1..], "I")) {
+                if (mem.eql(u8, arg, "-I")) {
                     i += 1;
                     if (i >= args.len)
                         errWithUsage(flatc, "missing path following: {s}", .{arg});
@@ -138,6 +138,11 @@ pub const Compiler = struct {
                         flatc.allocator,
                         options.include_directories_storage.getLast(),
                     );
+                } else if (mem.eql(u8, arg, "-o")) {
+                    i += 1;
+                    if (i >= args.len)
+                        errWithUsage(flatc, "missing path following: {s}", .{arg});
+                    options.output_path = util.posixPath(args[i]);
                 } else {
                     if (flatc.code_generators.get(arg)) |cg| {
                         options.any_generator = true;
@@ -290,7 +295,7 @@ pub const Compiler = struct {
 
         for (options.generators.items) |generator| {
             if (generator.supportsRootFileGeneration(generator))
-                try generator.generateRootFile(&parser, options.output_path);
+                try generator.generateRootFile(generator, parser, options.output_path);
         }
     }
 };

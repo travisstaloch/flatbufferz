@@ -2,9 +2,33 @@ const std = @import("std");
 const mem = std.mem;
 const fs = std.fs;
 const assert = std.debug.assert;
+const common = @import("common.zig");
+const todo = common.todo;
+
+pub const Case = enum(u4) {
+    Unknown = 0,
+    // TheQuickBrownFox
+    UpperCamel = 1,
+    // theQuickBrownFox
+    LowerCamel = 2,
+    // the_quick_brown_fox
+    Snake = 3,
+    // THE_QUICK_BROWN_FOX
+    ScreamingSnake = 4,
+    // THEQUICKBROWNFOX
+    AllUpper = 5,
+    // thequickbrownfox
+    AllLower = 6,
+    // the-quick-brown-fox
+    Dasher = 7,
+    // THEQuiCKBr_ownFox (or whatever you want, we won't change it)
+    Keep = 8,
+    // the_quick_brown_fox123 (as opposed to the_quick_brown_fox_123)
+    Snake2 = 9,
+};
 
 pub fn posixPath(path: []u8) []u8 {
-    for (path) |c, i| {
+    for (path, 0..) |c, i| {
         if (c == '\\') path[i] = '/';
     }
     return path;
@@ -154,4 +178,203 @@ pub fn check_ascii_range(x: u8, comptime a: u8, comptime b: u8) bool {
 
 pub fn ptrGreater(a: anytype, b: anytype) bool {
     return @ptrToInt(a) > @ptrToInt(b);
+}
+
+// Save data "buf" into file "name" returning true if
+// successful, false otherwise.  If "binary" is false
+// data is written using ifstream's text mode, otherwise
+// data is written with no transcoding.
+pub fn saveFile(path: []const u8, buf: []const u8, binary: bool) !void {
+    _ = binary;
+    // return SaveFile(name, buf.c_str(), buf.size(), binary);
+    // std::ofstream ofs(name, binary ? std::ofstream::binary : std::ofstream::out);
+    // if (!ofs.is_open()) return false;
+    // ofs.write(buf, len);
+    // return !ofs.bad();
+    const file = try std.fs.cwd().openFile(path, .{ .mode = .write_only });
+    defer file.close();
+    try file.writeAll(buf);
+}
+
+const isLower = std.ascii.isLower;
+const isDigit = std.ascii.isDigit;
+const toLower = std.ascii.toLower;
+
+pub fn camelToSnake(input: []const u8, writer: anytype) !void {
+    for (input, 0..) |c, i| {
+        if (i == 0) {
+            try writer.writeByte(toLower(c));
+        } else if (c == '_') {
+            try writer.writeByte('_');
+        } else if (!isLower(c)) {
+            // Prevent duplicate underscores for Upper_Snake_Case strings
+            // and UPPERCASE strings.
+            if (isLower(input[i - 1]) or (isDigit(input[i - 1]) and !isDigit(c))) {
+                try writer.writeByte('_');
+            }
+            try writer.writeByte(toLower(c));
+        } else {
+            try writer.writeByte(c);
+        }
+    }
+}
+pub fn dasherToSnake(input: []const u8) []const u8 {
+    _ = input;
+    todo("dasherToSnake", .{});
+}
+
+pub fn toCamelCase(input: []const u8, first: bool) []const u8 {
+    _ = input;
+    _ = first;
+    todo("toCamelCase", .{});
+    // std::string s;
+    // for (size_t i = 0; i < input.length(); i++) {
+    //   if (!i && first)
+    //     s += CharToUpper(input[i]);
+    //   else if (input[i] == '_' && i + 1 < input.length())
+    //     s += CharToUpper(input[++i]);
+    //   else
+    //     s += input[i];
+    // }
+    // return s;
+}
+
+pub fn toSnakeCase(input: []const u8, screaming: bool) []const u8 {
+    _ = input;
+    _ = screaming;
+    todo("toSnakeCase", .{});
+    // std::string s;
+    // for (size_t i = 0; i < input.length(); i++) {
+    //   if (i == 0) {
+    //     s += screaming ? CharToUpper(input[i]) : CharToLower(input[i]);
+    //   } else if (input[i] == '_') {
+    //     s += '_';
+    //   } else if (!islower(input[i])) {
+    //     // Prevent duplicate underscores for Upper_Snake_Case strings
+    //     // and UPPERCASE strings.
+    //     if (islower(input[i - 1]) || (isdigit(input[i-1]) && !isdigit(input[i]))) { s += '_'; }
+    //     s += screaming ? CharToUpper(input[i]) : CharToLower(input[i]);
+    //   } else {
+    //     s += screaming ? CharToUpper(input[i]) : input[i];
+    //   }
+    // }
+    // return s;
+}
+
+pub fn toAll(input: []const u8, comptime transform: fn (u8) u8) []const u8 {
+    _ = input;
+    _ = transform;
+    todo("toAll", .{});
+
+    // std::string ToAll(const std::string &input,
+    //                          std::function<char(const char)> transform) {
+    //   std::string s;
+    //   for (size_t i = 0; i < input.length(); i++) { s += transform(input[i]); }
+    //   return s;
+}
+
+pub fn toDasher(input: []const u8) []const u8 {
+    _ = input;
+    todo("toDasher", .{});
+
+    // std::string ToDasher(const std::string &input) {
+    //   std::string s;
+    //   char p = 0;
+    //   for (size_t i = 0; i < input.length(); i++) {
+    //     char const &c = input[i];
+    //     if (c == '_') {
+    //       if (i > 0 && p != kPathSeparator &&
+    //           // The following is a special case to ignore digits after a _. This is
+    //           // because ThisExample3 would be converted to this_example_3 in the
+    //           // CamelToSnake conversion, and then dasher would do this-example-3,
+    //           // but it expects this-example3.
+    //           !(i + 1 < input.length() && isdigit(input[i + 1])))
+    //         s += "-";
+    //     } else {
+    //       s += c;
+    //     }
+    //     p = c;
+    //   }
+    //   return s;
+}
+
+// Converts foo_bar_123baz_456 to foo_bar123_baz456
+pub fn snakeToSnake2(input: []const u8) []const u8 {
+    _ = input;
+    todo("snakeToSnake2", .{});
+
+    // std::string SnakeToSnake2(const std::string &s) {
+    //   if (s.length() <= 1) return s;
+    //   std::string result;
+    //   result.reserve(s.size());
+    //   for (size_t i = 0; i < s.length() - 1; i++) {
+    //     if (s[i] == '_' && isdigit(s[i + 1])) {
+    //       continue;  // Move the `_` until after the digits.
+    //     }
+
+    //     result.push_back(s[i]);
+
+    //     if (isdigit(s[i]) && isalpha(s[i + 1]) && islower(s[i + 1])) {
+    //       result.push_back('_');
+    //     }
+    //   }
+    //   result.push_back(s.back());
+
+    //   return result;
+}
+
+pub const CaseTransform = packed struct {
+    input: Case,
+    output: Case,
+
+    pub fn init(output: Case, input: Case) CaseTransform {
+        return .{
+            .input = input,
+            .output = output,
+        };
+    }
+    pub fn asInt(tx: CaseTransform) u8 {
+        return @bitCast(u8, tx);
+    }
+    pub fn int(input: Case, output: Case) u8 {
+        return CaseTransform.init(input, output).asInt();
+    }
+};
+
+pub fn convertCase(
+    input: []const u8,
+    // tx_fn: void,
+    case_tx: CaseTransform,
+    writer: anytype,
+) !void {
+    // _ = input;
+    // _ = tx_fn;
+    // if (case_tx.output == .Keep) return input;
+    switch (case_tx.asInt()) {
+        CaseTransform.int(.Snake, .LowerCamel) => return camelToSnake(input, writer),
+        else => todo("CaseTransform {}", .{case_tx}),
+    }
+    todo("input={s} in={s} out={s} ", .{ input, @tagName(case_tx.input), @tagName(case_tx.output) });
+    // // The output cases expect snake_case inputs, so if we don't have that input
+    // // format, try to convert to snake_case.
+    // switch (input_case) {
+    //     .LowerCamel,
+    //     .UpperCamel,
+    //     => return convertCase( try camelToSnake(input, writer), output_case, .Snake, writer),
+    //     .Dasher => return convertCase( dasherToSnake(input), output_case, .Snake, writer),
+    //     .Keep => common.panicf("WARNING: Converting from Keep case.\n", .{}),
+    //     else => {},
+    // }
+
+    // return switch (output_case) {
+    //     .UpperCamel => toCamelCase(input, true),
+    //     .LowerCamel => toCamelCase(input, false),
+    //     .Snake => input,
+    //     .ScreamingSnake => toSnakeCase(input, true),
+    //     .AllUpper => toAll(input, std.ascii.toUpper),
+    //     .AllLower => toAll(input, std.ascii.toUpper),
+    //     .Dasher => toDasher(input),
+    //     .Snake2 => snakeToSnake2(input),
+    //     else => input,
+    // };
 }

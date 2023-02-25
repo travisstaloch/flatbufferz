@@ -2,8 +2,8 @@ const std = @import("std");
 const mem = std.mem;
 const fs = std.fs;
 const assert = std.debug.assert;
-const common = @import("common.zig");
-const todo = common.todo;
+const fb = @import("flatbuffers");
+const todo = fb.common.todo;
 
 pub const Case = enum(u4) {
     Unknown = 0,

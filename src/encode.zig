@@ -49,6 +49,25 @@ pub fn read(comptime T: type, buf: []const u8) T {
             .bits = info.Float.bits,
         } });
         return @bitCast(T, mem.readIntLittle(I, buf[0..@sizeOf(T)]));
+    } else if (info == .Bool)
+        return buf[0] == 1
+    else if (info == .Enum) {
+        const Tag = info.Enum.tag_type;
+        const taginfo = @typeInfo(Tag);
+        const I = @Type(.{
+            .Int = .{
+                .signedness = taginfo.Int.signedness,
+                .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
+                    unreachable,
+            },
+        });
+        // return @intToEnum(T, mem.readIntLittle(I, buf[0..@sizeOf(I)]));
+        const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);
+        return std.meta.intToEnum(T, i) catch
+            std.debug.panic(
+            "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
+            .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
+        );
     }
     return mem.readIntLittle(T, buf[0..@sizeOf(T)]);
 }

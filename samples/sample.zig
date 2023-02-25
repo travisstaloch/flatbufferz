@@ -3,6 +3,7 @@
 
 const fb = @import("flatbuffers");
 const Builder = fb.Builder;
+const Table = fb.Table;
 const sample = @This();
 
 pub fn WeaponStart(builder: *Builder) !void {
@@ -83,6 +84,7 @@ pub const Vec3 = struct {
     pub fn init(buf: []const u8, i: u32) Vec3 {
         return .{ ._tab = fb.Struct.init(buf, i) };
     }
+
     pub fn X(v: Vec3) f32 {
         return v._tab._tab.read(f32, v._tab._tab.pos + 0);
     }
@@ -95,74 +97,29 @@ pub const Vec3 = struct {
 };
 
 pub const Weapon = struct {
-    _tab: fb.Table,
+    _tab: Table,
 
-    pub fn init(buf: []const u8, i: u32) Weapon {
-        return .{ ._tab = fb.Table.init(buf, i) };
-    }
-
-    pub fn Name(w: Weapon) []const u8 {
-        return w._tab.readByteVectorWithDefault(4, "");
-    }
-    pub fn Damage(w: Weapon) u16 {
-        return w._tab.read(u16, w._tab.pos + 6);
-    }
+    pub const init = Table.Init(Weapon);
+    pub const Name = Table.ReadByteVec(Weapon, 4, null);
+    pub const Damage = Table.ReadWithDefault(Weapon, u16, 6, null);
 };
 
 pub const Monster = struct {
-    _tab: fb.Table,
+    _tab: Table,
 
-    pub fn init(buf: []const u8, i: u32) Monster {
-        return .{ ._tab = fb.Table.init(buf, i) };
-    }
-    pub fn Mana(m: Monster) u16 {
-        return m._tab.readWithDefault(u16, 6, 150);
-    }
-    pub fn Hp(m: Monster) u16 {
-        return m._tab.readWithDefault(u16, 8, 100);
-    }
-    pub fn Color(m: Monster) sample.Color {
-        return m._tab.readWithDefault(sample.Color, 16, 2);
-    }
-    pub fn Name(m: Monster) []const u8 {
-        return m._tab.readByteVectorWithDefault(10, "");
-    }
-    pub fn Pos(m: Monster) ?Vec3 {
-        const o = m._tab.offset(4);
-        if (o != 0) {
-            const x = o + m._tab.pos;
-            return Vec3.init(m._tab.bytes, x);
-        }
-        return null;
-    }
-    pub fn Inventory(m: Monster, j: usize) u8 {
-        const o = m._tab.offset(14);
-        if (o != 0) {
-            const a = m._tab.vector(o);
-            return m._tab.read(u8, a + @intCast(u32, j) * 1);
-        }
-        return 0;
-    }
-    pub fn InventoryLength(m: Monster) u32 {
-        return m._tab.readVectorLen(14);
-    }
-    pub fn WeaponsLength(m: Monster) u32 {
-        return m._tab.readVectorLen(18);
-    }
-    pub fn Weapons(m: Monster, j: usize) ?Weapon {
-        const o = m._tab.offset(18);
-        if (o != 0) {
-            var x = m._tab.vector(o);
-            x += @intCast(u32, j) * 4;
-            x = m._tab.indirect(x);
-            return Weapon.init(m._tab.bytes, x);
-        }
-        return null;
-    }
-    pub fn EquippedType(m: Monster) u8 {
-        return m._tab.readWithDefault(u8, 20, 0);
-    }
-    pub fn Equipped(rcv: Monster) ?fb.Table {
+    pub const init = Table.Init(Monster);
+    pub const Mana = Table.ReadWithDefault(Monster, u16, 6, 150);
+    pub const Hp = Table.ReadWithDefault(Monster, u16, 8, 100);
+    pub const Color = Table.ReadWithDefault(Monster, sample.Color, 16, 2);
+    pub const Name = Table.ReadByteVec(Monster, 10, null);
+    pub const Pos = Table.ReadStruct(Monster, Vec3, 4, null);
+    pub const InventoryLen = Table.VectorLen(Monster, 14);
+    pub const Inventory = Table.VectorAt(Monster, u8, 14, 0);
+    pub const WeaponsLen = Table.VectorLen(Monster, 18);
+    pub const Weapons = Table.VectorAt(Monster, Weapon, 18, null);
+    pub const EquippedType = Table.ReadWithDefault(Monster, u8, 20, 0);
+
+    pub fn Equipped(rcv: Monster) ?Table {
         const o = rcv._tab.offset(22);
         if (o != 0) {
             return rcv._tab.union_(o);

@@ -80,13 +80,13 @@ pub fn main() !void {
     // For vectors, like `Inventory`, they have a method suffixed with 'Length' that can be used
     // to query the length of the vector. You can index the vector by passing an index value
     // into the accessor.
-    for (0..monster.InventoryLength()) |i|
+    for (0..monster.InventoryLen()) |i|
         try testing.expectEqual(@intCast(u8, i), monster.Inventory(i));
 
     const expected_weapon_names = [_][]const u8{ "Sword", "Axe" };
     const expected_weapon_damages = [_]u32{ 3, 5 };
 
-    for (0..monster.WeaponsLength()) |i| {
+    for (0..monster.WeaponsLen()) |i| {
         if (monster.Weapons(i)) |weapon| {
             try testing.expectEqualStrings(expected_weapon_names[i], weapon.Name());
             try testing.expectEqual(expected_weapon_damages[i], weapon.Damage());
@@ -107,7 +107,7 @@ pub fn main() !void {
             try testing.expectEqual(@as(u16, 5), w.Damage());
         }
     }
-    
-    if(!builtin.is_test)
+
+    if (!builtin.is_test)
         std.debug.print("The FlatBuffer was successfully created and verified!\n", .{});
 }

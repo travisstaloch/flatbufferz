@@ -1,6 +1,6 @@
-//! 
+//!
 //! A port of https://github.com/google/flatbuffers/blob/master/go/builder.go
-//! 
+//!
 //! Builder is a state machine for creating FlatBuffer objects.
 //! Use a Builder to construct object(s) starting from leaf nodes.
 //!
@@ -161,7 +161,6 @@ pub fn writeVtable(b: *Builder) !u32 {
 
         // Write out the current vtable in reverse , because
         // serialization occurs in last-first order:
-        // const for i = b.vtable.len - 1; i >= 0; i-- {
         {
             var i = @bitCast(isize, b.vtable.items.len) - 1;
             while (i >= 0) : (i -= 1) {
@@ -189,7 +188,8 @@ pub fn writeVtable(b: *Builder) !u32 {
         // Next, write the offset to the new vtable in the
         // already-allocated soff at the beginning of this object:
         const object_start = b.bytes.items.len - object_offset;
-        write(i32, b.bytes.items[object_start..], @intCast(i32, b.offset() - object_offset));
+        write(i32, b.bytes.items[object_start..], @intCast(i32, b.offset() -
+            object_offset));
 
         // Finally, store this vtable in memory for future
         // deduplication:
@@ -202,7 +202,8 @@ pub fn writeVtable(b: *Builder) !u32 {
 
         // Write the offset to the found vtable in the
         // already-allocated soff at the beginning of this object:
-        write(i32, b.bytes.items[b.head..], @bitCast(i32, existing_vtable) - @bitCast(i32, object_offset));
+        write(i32, b.bytes.items[b.head..], @bitCast(i32, existing_vtable) -
+            @bitCast(i32, object_offset));
     }
 
     b.vtable.items.len = 0;
@@ -217,25 +218,20 @@ pub fn endObject(b: *Builder) !u32 {
     return n;
 }
 
-/// Doubles the size of the byteslice, and copies the old data towards the
+/// Doubles the size of the b.bytes, and copies the old data towards the
 /// end of the new byteslice (since we build the buffer backwards).
 pub fn growByteBuffer(b: *Builder) !void {
-    if ((b.bytes.items.len & 0xC0000000) != 0) {
+    if ((b.bytes.items.len & 0xC0000000) != 0)
         @panic("cannot grow buffer beyond 2 gigabytes");
-    }
-    var new_len = b.bytes.items.len * 2;
-    if (new_len == 0)
-        new_len = 1;
 
-    if (b.bytes.capacity >= new_len) {
-        // b.bytes = b.bytes.items[0..new_len];
-        b.bytes.items.len = new_len;
-    } else {
-        // const extension = make([]const u8, new_len-b.bytes.items.len);
-        // b.bytes = append(b.bytes, extension...);
+    var new_len = b.bytes.items.len * 2;
+    if (new_len == 0) new_len = 32;
+
+    if (b.bytes.capacity >= new_len)
+        b.bytes.items.len = new_len
+    else {
         try b.bytes.ensureTotalCapacity(b.alloc, new_len);
         b.bytes.items.len = new_len;
-        // todo("grow byte buffer", .{});
     }
 
     const middle = new_len / 2;
@@ -270,8 +266,6 @@ pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
     // Reallocate the buffer if needed:
     while (b.head <= align_size + size + additional_bytes) {
         const old_buf_size = b.bytes.items.len;
-        // try b.bytes.ensureTotalCapacity(b.alloc, @bitCast(u64, align_size + size + additional_bytes));
-        // b.bytes.expandToCapacity();
         try b.growByteBuffer();
         b.head += @intCast(u32, b.bytes.items.len - old_buf_size);
     }
@@ -282,9 +276,7 @@ pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
 /// prepends a i32, relative to where it will be written.
 pub fn prependSOff(b: *Builder, off: i32) !void {
     try b.prep(size_i32, 0); // Ensure alignment is already done.
-    if (!(off <= b.offset())) {
-        @panic("unreachable: off <= b.offset()");
-    }
+    if (off > b.offset()) @panic("unreachable: off <= b.offset()");
 
     const off2 = @bitCast(i32, b.offset()) - off + size_i32;
     b.place(i32, off2);
@@ -294,9 +286,8 @@ pub fn prependSOff(b: *Builder, off: i32) !void {
 pub fn prependUOff(b: *Builder, off: u32) !void {
     std.log.debug("prependUOff off={}", .{off});
     try b.prep(size_u32, 0); // Ensure alignment is already done.
-    if (!(off <= b.offset())) {
-        @panic("unreachable: off <= b.offset()");
-    }
+    if (off > b.offset()) @panic("unreachable: off <= b.offset()");
+
     const off2 = b.offset() - off + size_u32;
     b.place(u32, off2);
 }
@@ -329,18 +320,20 @@ pub fn endVector(b: *Builder, vector_num_elems: u32) u32 {
 pub fn createVectorOfTables(b: *Builder, offsets: []const u32) u32 {
     b.assertNotNested();
     b.StartVector(4, offsets.len, 4);
-    // const for i = offsets.len - 1; i >= 0; i-- {
-    var i = offsets.len - 1;
-    while (true) : (i -= 1) {
-        b.prependUOff(offsets[i]);
-        if (i == 0) break;
-    }
+    var i = @bitCast(isize, offsets.len) - 1;
+    while (i >= 0) : (i -= 1)
+        b.prependUOff(offsets[@bitCast(usize, i)]);
+
     return b.endVector(offsets.len);
 }
 
 const KeyCompare = fn (u32, u32, []u8) bool;
 
-pub fn createVectorOfSortedTables(b: *Builder, offsets: []u32, keyCompare: KeyCompare) u32 {
+pub fn createVectorOfSortedTables(
+    b: *Builder,
+    offsets: []u32,
+    keyCompare: KeyCompare,
+) u32 {
     // sort.Slice(offsets, func(i: u32, j: u32) bool {
     //     return keyCompare(offsets[i], offsets[j], b.bytes);
     // });
@@ -349,17 +342,8 @@ pub fn createVectorOfSortedTables(b: *Builder, offsets: []u32, keyCompare: KeyCo
     return b.CreateVectorOfTables(offsets);
 }
 
-/// Checks if the []const u8 is already written
-/// to the buffer before calling CreateString
+/// Checks if 's' is already written to the buffer before calling createString()
 pub fn createSharedString(b: *Builder, s: []const u8) u32 {
-    // if (b.sharedStrings == null) {
-    //     b.sharedStrings = make(map[string]u32);
-    // }
-    // const if v, ok = b.sharedStrings[s]; ok {
-    //     return v
-    // }
-    // const off = b.CreateString(s);
-    // b.sharedStrings[s] = off
     const gop = b.shared_strings.getOrPut(b.alloc, s);
     if (gop.found_existing) return gop.value_ptr.*;
     const off = b.createString(s);
@@ -419,9 +403,7 @@ fn assertNested(b: *Builder) void {
     // data that belongs outside of an object.
     // To fix this, write non-inline data (like vectors) before creating
     // objects.
-    if (!b.nested) {
-        @panic("Incorrect creation order: must be inside object.");
-    }
+    if (!b.nested) @panic("Incorrect creation order: must be inside object.");
 }
 
 fn assertNotNested(b: *Builder) void {
@@ -433,9 +415,7 @@ fn assertNotNested(b: *Builder) void {
     // Ignoring this assert may appear to work in simple cases, but the reason
     // it is here is that storing objects in-line may cause vtable offsets
     // to not fit anymore. It also leads to vtable duplication.
-    if (b.nested) {
-        @panic("Incorrect creation order: object must not be nested.");
-    }
+    if (b.nested) @panic("Incorrect creation order: object must not be nested.");
 }
 
 fn assertFinished(b: *Builder) void {
@@ -444,9 +424,8 @@ fn assertFinished(b: *Builder) void {
     // with your root table.
     // If you really need to access an unfinished buffer, use the Bytes
     // buffer directly.
-    if (!b.finished) {
-        @panic("Incorrect use of FinishedBytes(): must call 'Finish' first.");
-    }
+    if (!b.finished)
+        @panic("Incorrect use of finishedBytes(): must call 'finish()' first.");
 }
 
 /// prepends a T onto the object at vtable slot `o`.
@@ -475,9 +454,7 @@ pub fn prependUOffSlot(b: *Builder, o: u32, x: u32, d: u32) !void {
 pub fn prependStructSlot(b: *Builder, voffset: u32, x: u32, d: u32) void {
     if (x != d) {
         b.assertNested();
-        if (x != b.offset()) {
-            @panic("inline data write outside of object");
-        }
+        if (x != b.offset()) @panic("inline data write outside of object");
         b.slot(voffset);
     }
 }
@@ -551,11 +528,7 @@ pub fn finishPrefixed(b: *Builder, root_table: u32, size_prefix: bool) !void {
         try b.prep(@bitCast(i32, b.minalign), size_u32);
 
     try b.prependUOff(root_table);
-
-    if (size_prefix) {
-        b.place(u32, b.offset());
-    }
-
+    if (size_prefix) b.place(u32, b.offset());
     b.finished = true;
 }
 

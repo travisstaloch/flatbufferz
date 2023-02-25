@@ -101,23 +101,23 @@ pub const Weapon = struct {
 
     pub const init = Table.Init(Weapon);
     pub const Name = Table.ReadByteVec(Weapon, 4, null);
-    pub const Damage = Table.ReadWithDefault(Weapon, u16, 6, null);
+    pub const Damage = Table.ReadWithDefault(Weapon, u16, 6, .required);
 };
 
 pub const Monster = struct {
     _tab: Table,
 
     pub const init = Table.Init(Monster);
-    pub const Mana = Table.ReadWithDefault(Monster, u16, 6, 150);
-    pub const Hp = Table.ReadWithDefault(Monster, u16, 8, 100);
-    pub const Color = Table.ReadWithDefault(Monster, sample.Color, 16, 2);
+    pub const Mana = Table.ReadWithDefault(Monster, u16, 6, .{ .optional = 150 });
+    pub const Hp = Table.ReadWithDefault(Monster, u16, 8, .{ .optional = 100 });
+    pub const Color = Table.ReadWithDefault(Monster, sample.Color, 16, .{ .optional = 2 });
     pub const Name = Table.ReadByteVec(Monster, 10, null);
-    pub const Pos = Table.ReadStruct(Monster, Vec3, 4, null);
+    pub const Pos = Table.ReadStruct(Monster, Vec3, 4);
     pub const InventoryLen = Table.VectorLen(Monster, 14);
     pub const Inventory = Table.VectorAt(Monster, u8, 14, 0);
     pub const WeaponsLen = Table.VectorLen(Monster, 18);
     pub const Weapons = Table.VectorAt(Monster, Weapon, 18, null);
-    pub const EquippedType = Table.ReadWithDefault(Monster, u8, 20, 0);
+    pub const EquippedType = Table.ReadWithDefault(Monster, u8, 20, .{ .optional = 0 });
 
     pub fn Equipped(rcv: Monster) ?Table {
         const o = rcv._tab.offset(22);

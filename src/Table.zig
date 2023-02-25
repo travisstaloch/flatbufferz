@@ -73,7 +73,7 @@ pub fn ReadWithDefault(
     comptime T: type,
     comptime U: type,
     comptime off: u32,
-    comptime default: ?U,
+    comptime presence: Presence(U),
 ) fn (T) U {
     return struct {
         fn func(t: T) U {
@@ -81,8 +81,8 @@ pub fn ReadWithDefault(
             // std.debug.print("ReadWithDefault({s}) o={}", .{ @typeName(T), o });
             return if (o != 0)
                 t._tab.read(U, o + t._tab.pos)
-            else if (default) |d|
-                d
+            else if (presence == .optional)
+                presence.optional.?
             else
                 unreachable;
         }
@@ -100,18 +100,29 @@ pub fn string(t: Table, off: u32) []const u8 {
     return t.byteVector(off);
 }
 
+fn Presence(comptime T: type) type {
+    return union(enum) {
+        required,
+        optional: ?T,
+
+        pub fn Return(comptime p: @This()) type {
+            return if (p == .optional) ?T else T;
+        }
+    };
+}
+
 pub fn String(
     comptime T: type,
     comptime off: u32,
-    comptime default: ?[]const u8,
-) fn (T) []const u8 {
+    comptime presence: Presence([]const u8),
+) fn (T) presence.Return() {
     return struct {
-        pub fn func(t: T) []const u8 {
+        pub fn func(t: T) presence.Return() {
             const o = t._tab.offset(off);
             return if (o != 0)
                 t._tab.string(o + t._tab.pos)
-            else if (default) |d|
-                d
+            else if (presence == .optional)
+                presence.optional
             else
                 unreachable;
         }
@@ -212,16 +223,15 @@ pub fn ReadStruct(
     comptime T: type,
     comptime C: type,
     comptime off: u32,
-    comptime default: ?C,
-) fn (T) if (default == null) ?C else C {
+) fn (T) ?C {
     return struct {
-        fn func(t: T) if (default == null) ?C else C {
+        fn func(t: T) ?C {
             const o = t._tab.offset(off);
             if (o != 0) {
                 const x = o + t._tab.pos;
                 return C.init(t._tab.bytes, x);
             }
-            return default;
+            return null;
         }
     }.func;
 }
@@ -230,16 +240,15 @@ pub fn ReadStructIndirect(
     comptime T: type,
     comptime C: type,
     comptime off: u32,
-    comptime default: ?C,
-) fn (T) if (default == null) ?C else C {
+) fn (T) ?C {
     return struct {
-        pub fn func(t: T) if (default == null) ?C else C {
+        pub fn func(t: T) ?C {
             const o = t._tab.offset(off);
             if (o != 0) {
                 const x = t._tab.indirect(o + t._tab.pos);
                 return C.init(t._tab.bytes, x);
             }
-            return default;
+            return null;
         }
     }.func;
 }

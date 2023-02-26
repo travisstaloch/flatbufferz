@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -12,16 +12,25 @@ pub fn build(b: *std.Build) void {
     const build_options = b.addOptions();
     build_options.addOption(std.log.Level, "log_level", log_level);
 
-    const lib = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
+    const lib_mod = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
+    try lib_mod.dependencies.put("flatbufferz", lib_mod);
+    try b.modules.put(b.dupe("flatbufferz"), lib_mod);
 
+    const zig_clap_pkg = b.dependency("clap", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zig_clap = zig_clap_pkg.module("clap");
     const exe = b.addExecutable(.{
-        .name = "flatbuffers-zig",
+        .name = "flatc-zig",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
-    exe.addModule("flatbuffers", lib);
+    exe.addModule("flatbufferz", lib_mod);
+    exe.addModule("zig-clap", zig_clap);
     exe.addOptions("build_options", build_options);
+
     exe.install();
 
     const run_cmd = exe.run();
@@ -39,7 +48,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe_tests.addOptions("build_options", build_options);
-    exe_tests.addModule("flatbuffers", lib);
+    exe_tests.addModule("flatbufferz", lib_mod);
     exe_tests.main_pkg_path = ".";
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
@@ -51,7 +60,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     sample_exe.addOptions("build_options", build_options);
-    sample_exe.addModule("flatbuffers", lib);
+    sample_exe.addModule("flatbufferz", lib_mod);
     sample_exe.install();
 
     const sample_run_cmd = sample_exe.run();

@@ -1,0 +1,12 @@
+.{
+    .name = "flatbufferz",
+    .version = "0.0.1",
+
+    .dependencies = .{
+        .clap = .{
+            // TODO use Hejsil/zig-clap/ once #92 is merged
+            .url = "https://github.com/travisstaloch/zig-clap/archive/a4940c3dcff9a2a711ddf1ec9f2e1d64d34c63f0.tar.gz",
+            .hash = "1220caf0689cafa7d546ef413f1c1cc5a278dfa1aa2e4de437d3ccee7527bf8e68cd",
+        },
+    }
+}

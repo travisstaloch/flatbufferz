@@ -1,0 +1,12 @@
+// test schema file
+
+include "test_inc.fbs";
+
+namespace People;
+
+table Person {
+  name: string;
+  gender: Gender=None;
+  age: int;
+  knows_zig: bool = false;
+}

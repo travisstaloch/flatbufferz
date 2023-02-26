@@ -3,3 +3,4 @@ pub const Table = @import("Table.zig");
 pub const Struct = Table.Struct;
 pub const encode = @import("encode.zig");
 pub const common = @import("common.zig");
+pub const idl = @import("idl.zig");

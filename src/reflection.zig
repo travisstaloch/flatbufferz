@@ -1,9 +1,7 @@
-pub usingnamespace @import("reflection_generated.zig");
 pub const union_type_field_suffix = "_type";
 const fb = @import("flatbuffers");
 const Table = fb.Table;
 const refl = @This();
-const idl = @import("idl.zig");
 
 /// New schema language features that are not supported by old code generators.
 pub const AdvancedFeatures = enum(u4) {
@@ -59,8 +57,8 @@ pub const Type = struct {
     _tab: Table,
     pub const init = Table.Init(@This());
     pub const GetRootAs = Table.GetRootAs(@This());
-    pub const BaseType = Table.ReadWithDefault(@This(), idl.BaseType, 4, .required);
-    pub const Element = Table.ReadWithDefault(@This(), idl.BaseType, 6, .{ .optional = .NONE });
+    pub const BaseType = Table.ReadWithDefault(@This(), fb.idl.BaseType, 4, .required);
+    pub const Element = Table.ReadWithDefault(@This(), fb.idl.BaseType, 6, .{ .optional = .NONE });
     pub const Index = fb.Table.ReadWithDefault(@This(), i32, 8, -1);
     pub const FixedLength = fb.Table.ReadWithDefault(@This(), u16, 10, 0);
     pub const BaseSize = fb.Table.ReadWithDefault(@This(), u32, 12, 4);

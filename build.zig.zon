@@ -4,9 +4,8 @@
 
     .dependencies = .{
         .clap = .{
-            // TODO use Hejsil/zig-clap/ once #92 is merged
-            .url = "https://github.com/travisstaloch/zig-clap/archive/a4940c3dcff9a2a711ddf1ec9f2e1d64d34c63f0.tar.gz",
-            .hash = "1220caf0689cafa7d546ef413f1c1cc5a278dfa1aa2e4de437d3ccee7527bf8e68cd",
+            .url = "https://github.com/Hejsil/zig-clap/archive/9c3ac846121a03934c7460cc54989059b1f66b22.tar.gz",
+            .hash = "122092448aba1044634fd9f8465dc5eba3a33ca9ff8348023405add59d1c65c9f8f2",
         },
     }
 }

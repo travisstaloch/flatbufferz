@@ -1,5 +1,5 @@
 pub const union_type_field_suffix = "_type";
-const fb = @import("flatbuffers");
+const fb = @import("flatbufferz");
 const Table = fb.Table;
 const refl = @This();
 
@@ -29,7 +29,7 @@ pub const EnumVal = struct {
     pub const GetRootAs = Table.GetRootAs(@This());
     pub const Name = Table.ReadByteVec(@This(), 4, null);
     pub const Value = Table.ReadWithDefault(@This(), i32, 6, .{ .optional = 0 });
-    pub const UnionType = fb.Table.ReadStructIndirect(@This(), refl.Type, 10);
+    pub const UnionType = Table.ReadStructIndirect(@This(), refl.Type, 10);
     pub const AttributesLen = Table.VectorLen(@This(), 12);
     pub const Attributes = Table.VectorAt(@This(), KeyValue, 12, null);
     pub const DocumentationLen = Table.VectorLen(@This(), 14);
@@ -44,8 +44,8 @@ pub const Enum = struct {
     pub const Name = Table.ReadByteVec(@This(), 4, null);
     pub const ValuesLen = Table.VectorLen(@This(), 6);
     pub const Values = Table.VectorAt(@This(), EnumVal, 6, null);
-    pub const IsUnion = fb.Table.ReadWithDefault(@This(), bool, 8, .{ .optional = false });
-    pub const UnderlyingType = fb.Table.ReadStructIndirect(@This(), refl.Type, 10);
+    pub const IsUnion = Table.ReadWithDefault(@This(), bool, 8, .{ .optional = false });
+    pub const UnderlyingType = Table.ReadStructIndirect(@This(), refl.Type, 10);
     pub const AttributesLen = Table.VectorLen(@This(), 12);
     pub const Attributes = Table.VectorAt(@This(), KeyValue, 12, null);
     pub const DocumentationLen = Table.VectorLen(@This(), 14);
@@ -59,10 +59,10 @@ pub const Type = struct {
     pub const GetRootAs = Table.GetRootAs(@This());
     pub const BaseType = Table.ReadWithDefault(@This(), fb.idl.BaseType, 4, .required);
     pub const Element = Table.ReadWithDefault(@This(), fb.idl.BaseType, 6, .{ .optional = .NONE });
-    pub const Index = fb.Table.ReadWithDefault(@This(), i32, 8, -1);
-    pub const FixedLength = fb.Table.ReadWithDefault(@This(), u16, 10, 0);
-    pub const BaseSize = fb.Table.ReadWithDefault(@This(), u32, 12, 4);
-    pub const ElementSize = fb.Table.ReadWithDefault(@This(), u32, 14, 0);
+    pub const Index = Table.ReadWithDefault(@This(), i32, 8, -1);
+    pub const FixedLength = Table.ReadWithDefault(@This(), u16, 10, 0);
+    pub const BaseSize = Table.ReadWithDefault(@This(), u32, 12, 4);
+    pub const ElementSize = Table.ReadWithDefault(@This(), u32, 14, 0);
 };
 
 pub const Field = struct {
@@ -70,20 +70,22 @@ pub const Field = struct {
     pub const init = Table.Init(@This());
     pub const GetRootAs = Table.GetRootAs(@This());
     pub const Name = Table.ReadByteVec(@This(), 4, null);
-    pub const Type = fb.Table.ReadStructIndirect(@This(), refl.Type, 6);
-    pub const Id = fb.Table.ReadWithDefault(@This(), u16, 8, 0);
-    pub const Offset = fb.Table.ReadWithDefault(@This(), u16, 10, .{ .optional = 0 });
-    pub const DefaultInteger = fb.Table.ReadWithDefault(@This(), u32, 12, .{ .optional = 0 });
-    pub const DefaultReal = fb.Table.ReadWithDefault(@This(), f64, 14, .{ .optional = 0 });
-    pub const Deprecated = fb.Table.ReadWithDefault(@This(), bool, 16, .{ .optional = false });
-    pub const Required = fb.Table.ReadWithDefault(@This(), bool, 18, .{ .optional = false });
-    pub const Key = fb.Table.ReadWithDefault(@This(), bool, 20, .{ .optional = false });
+    pub const Type = Table.ReadStructIndirect(@This(), refl.Type, 6);
+    pub const Id = Table.ReadWithDefault(@This(), u16, 8, 0);
+    pub const Offset = Table.ReadWithDefault(@This(), u16, 10, .{ .optional = 0 });
+    pub const DefaultInteger = Table.ReadWithDefault(@This(), i64, 12, .{ .optional = 0 });
+    pub const HasDefaultInteger = Table.Has(@This(), 12);
+    pub const DefaultReal = Table.ReadWithDefault(@This(), f64, 14, .{ .optional = 0 });
+    pub const HasDefaultReal = Table.Has(@This(), 14);
+    pub const Deprecated = Table.ReadWithDefault(@This(), bool, 16, .{ .optional = false });
+    pub const Required = Table.ReadWithDefault(@This(), bool, 18, .{ .optional = false });
+    pub const Key = Table.ReadWithDefault(@This(), bool, 20, .{ .optional = false });
     pub const AttributesLen = Table.VectorLen(@This(), 22);
     pub const Attributes = Table.VectorAt(@This(), KeyValue, 22, null);
     pub const DocumentationLen = Table.VectorLen(@This(), 24);
     pub const Documentation = Table.VectorAt(@This(), []const u8, 24, null);
-    pub const Optional = fb.Table.ReadWithDefault(@This(), bool, 26, .{ .optional = false });
-    pub const Padding = fb.Table.ReadWithDefault(@This(), u16, 28, 0);
+    pub const Optional = Table.ReadWithDefault(@This(), bool, 26, .{ .optional = false });
+    pub const Padding = Table.ReadWithDefault(@This(), u16, 28, 0);
 };
 
 pub const Object = struct {
@@ -91,11 +93,11 @@ pub const Object = struct {
     pub const init = Table.Init(@This());
     pub const GetRootAs = Table.GetRootAs(@This());
     pub const Name = Table.ReadByteVec(@This(), 4, null);
-    pub const IsStruct = fb.Table.ReadWithDefault(@This(), bool, 8, .{ .optional = false });
+    pub const IsStruct = Table.ReadWithDefault(@This(), bool, 8, .{ .optional = false });
     pub const FieldsLen = Table.VectorLen(@This(), 6);
     pub const Fields = Table.VectorAt(@This(), Field, 6, null);
-    pub const Minalign = fb.Table.ReadWithDefault(@This(), i32, 10, 0);
-    pub const Bytesize = fb.Table.ReadWithDefault(@This(), i32, 12, .{ .optional = 0 });
+    pub const Minalign = Table.ReadWithDefault(@This(), i32, 10, 0);
+    pub const Bytesize = Table.ReadWithDefault(@This(), i32, 12, .{ .optional = 0 });
     pub const AttributesLen = Table.VectorLen(@This(), 14);
     pub const Attributes = Table.VectorAt(@This(), KeyValue, 14, null);
     pub const DocumentationLen = Table.VectorLen(@This(), 16);

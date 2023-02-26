@@ -2,8 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
 const builtin = @import("builtin");
-const flatbuffers = @import("flatbuffers");
-const Builder = flatbuffers.Builder;
+const fb = @import("flatbufferz");
+const Builder = fb.Builder;
 const sample = @import("sample.zig");
 
 pub const std_options = struct {

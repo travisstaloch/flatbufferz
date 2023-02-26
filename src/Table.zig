@@ -3,8 +3,9 @@
 //!
 
 const std = @import("std");
-const encode = @import("encode.zig");
-const Builder = @import("Builder.zig");
+const fb = @import("flatbufferz");
+const Builder = fb.Builder;
+const encode = fb.encode;
 const size_u32 = Builder.size_u32;
 const Table = @This();
 
@@ -85,6 +86,18 @@ pub fn ReadWithDefault(
                 presence.optional.?
             else
                 unreachable;
+        }
+    }.func;
+}
+
+pub fn Has(
+    comptime T: type,
+    comptime off: u32,
+) fn (T) bool {
+    return struct {
+        fn func(t: T) bool {
+            const o = t._tab.offset(off);
+            return o != 0;
         }
     }.func;
 }

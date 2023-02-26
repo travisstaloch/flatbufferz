@@ -1,7 +1,7 @@
 //! this file will eventually be replaced by generated code. but for now
 //! its hand-written in order to 'bootstrap' the project
 
-const fb = @import("flatbuffers");
+const fb = @import("flatbufferz");
 const Builder = fb.Builder;
 const Table = fb.Table;
 const sample = @This();

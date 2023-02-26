@@ -4,3 +4,5 @@ pub const Struct = Table.Struct;
 pub const encode = @import("encode.zig");
 pub const common = @import("common.zig");
 pub const idl = @import("idl.zig");
+pub const reflection = @import("reflection.zig");
+pub const binary_tools = @import("binary_tools.zig");

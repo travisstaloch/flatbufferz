@@ -12,10 +12,12 @@ pub fn build(b: *std.Build) !void {
     const build_options = b.addOptions();
     build_options.addOption(std.log.Level, "log_level", log_level);
 
-    const lib_mod = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
-    try lib_mod.dependencies.put("flatbufferz", lib_mod);
     // expose module 'flatbufferz' to dependees
-    try b.modules.put(b.dupe("flatbufferz"), lib_mod);
+    const lib_mod = b.addModule(
+        "flatbufferz",
+        .{ .source_file = .{ .path = "src/lib.zig" } },
+    );
+    try lib_mod.dependencies.put("flatbufferz", lib_mod);
 
     const zig_clap_pkg = b.dependency("clap", .{
         .target = target,

@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) !void {
 
     const lib_mod = b.createModule(.{ .source_file = .{ .path = "src/lib.zig" } });
     try lib_mod.dependencies.put("flatbufferz", lib_mod);
+    // expose module 'flatbufferz' to dependees
     try b.modules.put(b.dupe("flatbufferz"), lib_mod);
 
     const zig_clap_pkg = b.dependency("clap", .{
@@ -55,7 +56,7 @@ pub fn build(b: *std.Build) !void {
 
     const sample_exe = b.addExecutable(.{
         .name = "sample",
-        .root_source_file = .{ .path = "samples/sample_binary.zig" },
+        .root_source_file = .{ .path = "examples/sample_binary.zig" },
         .target = target,
         .optimize = optimize,
     });

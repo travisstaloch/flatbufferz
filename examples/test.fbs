@@ -6,7 +6,17 @@ namespace People;
 
 table Person {
   name: string;
-  gender: Gender=None;
+  race: Race=None;
   age: int;
   knows_zig: bool = false;
+}
+
+union X {
+  a: Person,
+  b: Person,
+}
+
+table Foo {
+  people: [Person];
+  ages: [int];
 }

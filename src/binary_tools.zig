@@ -6,12 +6,13 @@ const reflection = fb.reflection;
 // bool defaulting to false.  as is, we can't detect it.
 pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: anytype) !void {
     const f = try std.fs.cwd().openFile(filename, .{});
+    defer f.close();
     const buf = try f.readToEndAlloc(alloc, std.math.maxInt(u16));
     defer alloc.free(buf);
 
     const schema = reflection.Schema.GetRootAs(buf, 0);
-    if (schema.RootObject()) |root_obj|
-        try writer.print("// root_object={s}\n", .{root_obj.Name()});
+    if (schema.RootTable()) |root_table|
+        try writer.print("// root_table={s}\n", .{root_table.Name()});
 
     for (0..schema.EnumsLen()) |i| {
         const e = schema.Enums(i).?;

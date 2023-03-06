@@ -1,6 +1,0 @@
-
-enum Gender:short {
-  None = -1,
-  Male = 0,
-  Female,
-}

@@ -1,3 +1,3 @@
 test {
-    _ = @import("../samples/sample_binary.zig");
+    _ = @import("../examples/sample_binary.zig");
 }

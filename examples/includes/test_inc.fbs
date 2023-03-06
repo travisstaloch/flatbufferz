@@ -1,0 +1,7 @@
+
+enum Race:short {
+  None = -1,
+  Human = 0,
+  Elf,
+  LizardMan = 2,
+}

@@ -57,12 +57,12 @@ pub const Type = struct {
     _tab: Table,
     pub const init = Table.Init(@This());
     pub const GetRootAs = Table.GetRootAs(@This());
-    pub const BaseType = Table.ReadWithDefault(@This(), fb.idl.BaseType, 4, .required);
+    pub const BaseType = Table.ReadWithDefault(@This(), fb.idl.BaseType, 4, .{ .optional = .NONE });
     pub const Element = Table.ReadWithDefault(@This(), fb.idl.BaseType, 6, .{ .optional = .NONE });
-    pub const Index = Table.ReadWithDefault(@This(), i32, 8, -1);
+    pub const Index = Table.ReadWithDefault(@This(), i32, 8, .{ .optional = -1 });
     pub const FixedLength = Table.ReadWithDefault(@This(), u16, 10, 0);
-    pub const BaseSize = Table.ReadWithDefault(@This(), u32, 12, 4);
-    pub const ElementSize = Table.ReadWithDefault(@This(), u32, 14, 0);
+    pub const BaseSize = Table.ReadWithDefault(@This(), u32, 12, .{ .optional = 4 });
+    pub const ElementSize = Table.ReadWithDefault(@This(), u32, 14, .{ .optional = 0 });
 };
 
 pub const Field = struct {
@@ -71,7 +71,7 @@ pub const Field = struct {
     pub const GetRootAs = Table.GetRootAs(@This());
     pub const Name = Table.ReadByteVec(@This(), 4, null);
     pub const Type = Table.ReadStructIndirect(@This(), refl.Type, 6);
-    pub const Id = Table.ReadWithDefault(@This(), u16, 8, 0);
+    pub const Id = Table.ReadWithDefault(@This(), u16, 8, .{ .optional = 0 });
     pub const Offset = Table.ReadWithDefault(@This(), u16, 10, .{ .optional = 0 });
     pub const DefaultInteger = Table.ReadWithDefault(@This(), i64, 12, .{ .optional = 0 });
     pub const HasDefaultInteger = Table.Has(@This(), 12);
@@ -85,7 +85,7 @@ pub const Field = struct {
     pub const DocumentationLen = Table.VectorLen(@This(), 24);
     pub const Documentation = Table.VectorAt(@This(), []const u8, 24, null);
     pub const Optional = Table.ReadWithDefault(@This(), bool, 26, .{ .optional = false });
-    pub const Padding = Table.ReadWithDefault(@This(), u16, 28, 0);
+    pub const Padding = Table.ReadWithDefault(@This(), u16, 28, .{ .optional = 0 });
 };
 
 pub const Object = struct {
@@ -96,13 +96,22 @@ pub const Object = struct {
     pub const IsStruct = Table.ReadWithDefault(@This(), bool, 8, .{ .optional = false });
     pub const FieldsLen = Table.VectorLen(@This(), 6);
     pub const Fields = Table.VectorAt(@This(), Field, 6, null);
-    pub const Minalign = Table.ReadWithDefault(@This(), i32, 10, 0);
+    pub const Minalign = Table.ReadWithDefault(@This(), i32, 10, .{ .optional = 0 });
     pub const Bytesize = Table.ReadWithDefault(@This(), i32, 12, .{ .optional = 0 });
     pub const AttributesLen = Table.VectorLen(@This(), 14);
     pub const Attributes = Table.VectorAt(@This(), KeyValue, 14, null);
     pub const DocumentationLen = Table.VectorLen(@This(), 16);
     pub const Documentation = Table.VectorAt(@This(), []const u8, 16, null);
     pub const DeclarationFile = Table.String(@This(), 18, .{ .optional = "" });
+};
+
+pub const SchemaFile = struct {
+    _tab: Table,
+    pub const init = Table.Init(@This());
+    pub const GetRootAs = Table.GetRootAs(@This());
+    pub const Filename = Table.ReadByteVec(@This(), 4, null);
+    pub const IndcludedFilenamesLen = Table.VectorLen(@This(), 6);
+    pub const IndcludedFilenames = Table.VectorAt(@This(), []const u8, 6, null);
 };
 
 pub const Schema = struct {
@@ -115,8 +124,8 @@ pub const Schema = struct {
     pub const Enums = Table.VectorAt(@This(), Enum, 6, null);
     pub const FileIdent = Table.String(@This(), 8, .{ .optional = "" });
     pub const FileExt = Table.String(@This(), 10, .{ .optional = "" });
-    pub const RootObject = Table.ReadStructIndirect(@This(), Object, 12);
+    pub const RootTable = Table.ReadStructIndirect(@This(), Object, 12);
     pub const AdvancedFeatures = Table.ReadWithDefault(@This(), refl.AdvancedFeatures, 14, 0);
     pub const FbsFilesLen = Table.VectorLen(@This(), 16);
-    pub const FbsFiles = Table.VectorAt(@This(), []const u8, 16, null);
+    pub const FbsFiles = Table.VectorAt(@This(), SchemaFile, 16, null);
 };

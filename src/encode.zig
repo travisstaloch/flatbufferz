@@ -43,33 +43,35 @@ pub fn getIndirectOffset(buf: []u8, offset: u32) u32 {
 /// read a little-endian T from buf.
 pub fn read(comptime T: type, buf: []const u8) T {
     const info = @typeInfo(T);
-    if (info == .Float) {
-        const I = @Type(.{ .Int = .{
-            .signedness = .unsigned,
-            .bits = info.Float.bits,
-        } });
-        return @bitCast(T, mem.readIntLittle(I, buf[0..@sizeOf(T)]));
-    } else if (info == .Bool)
-        return buf[0] == 1
-    else if (info == .Enum) {
-        const Tag = info.Enum.tag_type;
-        const taginfo = @typeInfo(Tag);
-        const I = @Type(.{
-            .Int = .{
-                .signedness = taginfo.Int.signedness,
-                .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
-                    unreachable,
-            },
-        });
-        // return @intToEnum(T, mem.readIntLittle(I, buf[0..@sizeOf(I)]));
-        const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);
-        return std.meta.intToEnum(T, i) catch
-            std.debug.panic(
-            "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
-            .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
-        );
+    switch (info) {
+        .Float => {
+            const I = @Type(.{ .Int = .{
+                .signedness = .unsigned,
+                .bits = info.Float.bits,
+            } });
+            return @bitCast(T, mem.readIntLittle(I, buf[0..@sizeOf(T)]));
+        },
+        .Bool => return buf[0] != 0,
+        .Enum => {
+            const Tag = info.Enum.tag_type;
+            const taginfo = @typeInfo(Tag);
+            const I = @Type(.{
+                .Int = .{
+                    .signedness = taginfo.Int.signedness,
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
+                        unreachable,
+                },
+            });
+            // return @intToEnum(T, mem.readIntLittle(I, buf[0..@sizeOf(I)]));
+            const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);
+            return std.meta.intToEnum(T, i) catch
+                std.debug.panic(
+                "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
+                .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
+            );
+        },
+        else => return mem.readIntLittle(T, buf[0..@sizeOf(T)]),
     }
-    return mem.readIntLittle(T, buf[0..@sizeOf(T)]);
 }
 
 /// write a little-endian T from a byte slice.

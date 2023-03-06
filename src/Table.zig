@@ -70,6 +70,7 @@ pub fn offset(t: Table, vtable_offset: u16) u16 {
     return 0;
 }
 
+// TODO rename to ReadScalar()
 pub fn ReadWithDefault(
     comptime T: type,
     comptime U: type,
@@ -265,3 +266,19 @@ pub fn ReadStructIndirect(
         }
     }.func;
 }
+
+// pub fn ReadUnionType(
+//     comptime T: type,
+//     comptime C: type,
+//     comptime off: u32,
+// ) fn (T) C {
+//     return struct {
+//         fn func(t: T) ?C {
+//             const o = t._tab.offset(off);
+//             return if (o != 0)
+//                 @intToEnum(C, t._tab.read(C, o + t._tab.pos))
+//             else
+//                 @intToEnum(C, 0);
+//         }
+//     }.func;
+// }

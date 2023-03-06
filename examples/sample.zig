@@ -10,7 +10,7 @@ pub fn WeaponStart(builder: *Builder) !void {
     try builder.startObject(2);
 }
 pub fn WeaponAddName(builder: *Builder, name: u32) !void {
-    try builder.prependUOffSlot(0, name, 0);
+    try builder.prependSlotUOff(0, name, 0);
 }
 pub fn WeaponAddDamage(builder: *Builder, damage: i16) !void {
     try builder.prependSlot(i16, 1, damage, 0);
@@ -40,17 +40,17 @@ pub fn MonsterStart(builder: *Builder) !void {
 }
 
 pub fn MonsterAddPos(builder: *Builder, pos: u32) void {
-    builder.prependStructSlot(0, pos, 0);
+    builder.prependSlotStruct(0, pos, 0);
 }
 
 pub fn MonsterAddHp(builder: *Builder, hp: i16) !void {
     try builder.prependSlot(i16, 2, hp, 100);
 }
 pub fn MonsterAddName(builder: *Builder, name: u32) !void {
-    try builder.prependUOffSlot(3, name, 0);
+    try builder.prependSlotUOff(3, name, 0);
 }
 pub fn MonsterAddInventory(builder: *Builder, inventory: u32) !void {
-    try builder.prependUOffSlot(5, inventory, 0);
+    try builder.prependSlotUOff(5, inventory, 0);
 }
 const Color = i8;
 pub const ColorRed: Color = 0;
@@ -61,7 +61,7 @@ pub fn MonsterAddColor(builder: *Builder, color: Color) !void {
     try builder.prependSlot(Color, 6, color, 2);
 }
 pub fn MonsterAddWeapons(builder: *Builder, weapons: u32) !void {
-    try builder.prependUOffSlot(7, weapons, 0);
+    try builder.prependSlotUOff(7, weapons, 0);
 }
 const Equipment = u8;
 pub const EquipmentNONE: Equipment = 0;
@@ -71,7 +71,7 @@ pub fn MonsterAddEquippedType(builder: *Builder, equippedType: Equipment) !void 
     try builder.prependSlot(u8, 8, equippedType, 0);
 }
 pub fn MonsterAddEquipped(builder: *Builder, equipped: u32) !void {
-    try builder.prependUOffSlot(9, equipped, 0);
+    try builder.prependSlotUOff(9, equipped, 0);
 }
 
 pub fn MonsterEnd(builder: *Builder) !u32 {

@@ -441,7 +441,7 @@ pub fn prependSlot(b: *Builder, comptime T: type, o: u32, x: T, d: T) !void {
 /// prepends an u32 onto the object at vtable slot `o`.
 /// If value `x` equals default `d`, then the slot will be set to zero and no
 /// other data will be written.
-pub fn prependUOffSlot(b: *Builder, o: u32, x: u32, d: u32) !void {
+pub fn prependSlotUOff(b: *Builder, o: u32, x: u32, d: u32) !void {
     if (x != d) {
         try b.prependUOff(x);
         b.slot(o);
@@ -451,7 +451,7 @@ pub fn prependUOffSlot(b: *Builder, o: u32, x: u32, d: u32) !void {
 // PrependStructSlot prepends a struct onto the object at vtable slot `o`.
 // Structs are stored inline, so nothing additional is being added.
 // In generated code, `d` is always 0.
-pub fn prependStructSlot(b: *Builder, voffset: u32, x: u32, d: u32) void {
+pub fn prependSlotStruct(b: *Builder, voffset: u32, x: u32, d: u32) void {
     if (x != d) {
         b.assertNested();
         if (x != b.offset()) @panic("inline data write outside of object");

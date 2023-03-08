@@ -55,7 +55,7 @@ pub fn main() !void {
     try Monster.AddHp(&builder, 300);
     try Monster.AddName(&builder, name);
     try Monster.AddInventory(&builder, inv);
-    try Monster.AddColor(&builder, .Red);
+    try Monster.AddColor_(&builder, .Red);
     try Monster.AddWeapons(&builder, weapons);
     try Monster.AddEquippedType(&builder, .Weapon);
     try Monster.AddEquipped(&builder, axe);

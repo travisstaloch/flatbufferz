@@ -448,7 +448,7 @@ pub fn prependSlotUOff(b: *Builder, o: u32, x: u32, d: u32) !void {
     }
 }
 
-// PrependStructSlot prepends a struct onto the object at vtable slot `o`.
+// prepends a struct onto the object at vtable slot `o`.
 // Structs are stored inline, so nothing additional is being added.
 // In generated code, `d` is always 0.
 pub fn prependSlotStruct(b: *Builder, voffset: u32, x: u32, d: u32) void {

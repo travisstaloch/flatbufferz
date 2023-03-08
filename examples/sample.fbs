@@ -22,7 +22,7 @@ table Monster {
   hp:short = 100 (id: 2);
   name:string (id: 3, key);
   inventory:[ubyte] (id: 4);
-  color:Color = Blue (id: 5);
+  color_:Color = Blue (id: 5);
   weapons: [Weapon] (id: 6);
   equipped: Equipment (id: 7);
 }

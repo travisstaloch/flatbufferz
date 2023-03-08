@@ -74,4 +74,32 @@ pub fn build(b: *std.Build) !void {
     sample_run_cmd.condition = .always;
     const sample_run_step = b.step("run-sample", "Run the app");
     sample_run_step.dependOn(&sample_run_cmd.step);
+
+    // TODO remove this flag.
+    const build_sample2 = b.option(
+        bool,
+        "build-sample2",
+        "Wether to build sample2",
+    ) orelse false;
+    if (build_sample2) {
+        const sample_exe2 = b.addExecutable(.{
+            .name = "sample2",
+            .root_source_file = .{ .path = "examples/sample_binary2.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        sample_exe2.addOptions("build_options", build_options);
+        sample_exe2.addModule("flatbufferz", lib_mod);
+        sample_exe2.install();
+        sample_exe2.main_pkg_path = ".";
+
+        const sample2_run_cmd = sample_exe2.run();
+        sample2_run_cmd.step.dependOn(b.getInstallStep());
+        if (b.args) |args| {
+            sample2_run_cmd.addArgs(args);
+        }
+        sample2_run_cmd.condition = .always;
+        const sample2_run_step = b.step("run-sample2", "Run the app");
+        sample2_run_step.dependOn(&sample2_run_cmd.step);
+    }
 }

@@ -108,13 +108,13 @@ pub const Monster = struct {
     _tab: Table,
 
     pub const init = Table.Init(Monster);
+    pub const Pos = Table.ReadStruct(Monster, Vec3, 4);
     pub const Mana = Table.ReadWithDefault(Monster, u16, 6, .{ .optional = 150 });
     pub const Hp = Table.ReadWithDefault(Monster, u16, 8, .{ .optional = 100 });
-    pub const Color = Table.ReadWithDefault(Monster, sample.Color, 16, .{ .optional = 2 });
     pub const Name = Table.ReadByteVec(Monster, 10, null);
-    pub const Pos = Table.ReadStruct(Monster, Vec3, 4);
     pub const InventoryLen = Table.VectorLen(Monster, 14);
     pub const Inventory = Table.VectorAt(Monster, u8, 14, 0);
+    pub const Color = Table.ReadWithDefault(Monster, sample.Color, 16, .{ .optional = 2 });
     pub const WeaponsLen = Table.VectorLen(Monster, 18);
     pub const Weapons = Table.VectorAt(Monster, Weapon, 18, null);
     pub const EquippedType = Table.ReadWithDefault(Monster, u8, 20, .{ .optional = 0 });

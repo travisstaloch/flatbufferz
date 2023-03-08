@@ -105,7 +105,7 @@ fn genTypeBasic(
         _ = try writer.write("void");
     } else if (base_ty == .VECTOR) {
         const ele = ty.Element();
-        if (ele.isScalar())
+        if (ele.isScalar() or ele == .STRING)
             _ = try writer.write(zigScalarTypename(ele))
         else if (ele.isStruct()) {
             const o = schema.Objects(@intCast(u32, ty.Index())).?;
@@ -175,7 +175,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
     const last_name = lastName(ename);
     try writer.print(
         \\
-        \\pub fn pack(t: {s}T, b: *Builder) !void {{
+        \\pub fn pack(rcv: {s}T, b: *Builder) !void {{
         \\  switch (t) {{
         \\
     ,
@@ -203,7 +203,7 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, writer: anytype) !void {
     const ename = e.Name();
     const last_name = lastName(ename);
     try writer.print(
-        "pub fn unpack(t: {s}, table: Table) {s}T {{\n",
+        "pub fn unpack(rcv: {s}, table: Table) {s}T {{\n",
         .{ last_name, last_name },
     );
     _ = try writer.write("  switch (t) {\n");
@@ -304,7 +304,7 @@ fn isStruct(object_index: i32, schema: Schema) bool {
 fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
-    try writer.print("pub fn pack(t: {s}T, b: *Builder) u32 {{\n", .{struct_type});
+    try writer.print("pub fn pack(rcv: {s}T, b: *Builder) u32 {{\n", .{struct_type});
     {
         var i: u32 = 0;
         while (i < o.FieldsLen()) : (i += 1) {
@@ -316,7 +316,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             const fname = field.Name();
             if (field_base_ty == .STRING) {
                 try writer.print(
-                    \\const {0s}_off = if (t.{0s}.items.len != 0) try b.createString(t.{0s}) else 0;
+                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try b.createString(rcv.{0s}) else 0;
                     \\
                 , .{fname});
             } else if (field_base_ty.isVector() and
@@ -324,14 +324,14 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 !field_base_ty.isUnion())
             {
                 try writer.print(
-                    \\const {0s}_off = if (t.{0s}.items.len != 0) try b.createByteString(t.{0s}) else 0;
+                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try b.createByteString(rcv.{0s}) else 0;
                     \\
                 , .{fname});
             } else if (field_base_ty.isVector()) {
                 try writer.print(
                     \\var {0s}_off: u32 = 0;
-                    \\if (t.{0s}.items.len != 0) {{
-                    \\const {0s}_len = t.{0s}.items.len;
+                    \\if (rcv.{0s}.items.len != 0) {{
+                    \\const {0s}_len = rcv.{0s}.items.len;
                     \\
                 , .{fname});
                 const fty_ele = field_ty.Element();
@@ -339,7 +339,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                     try writer.print(
                         \\var {0s}_offsets = make([]u32, {0s}_len);
                         \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try b.createString(t.{0s}[j]);
+                        \\off.* = try b.createString(rcv.{0s}[j]);
                         \\}}
                         \\
                     , .{fname});
@@ -347,7 +347,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                     try writer.print(
                         \\var {0s}_offsets = make([]u32, {0s}_len);
                         \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try t.{0s}[j].pack(b);
+                        \\off.* = try rcv.{0s}[j].pack(b);
                         \\}}
                         \\
                     , .{fname});
@@ -363,11 +363,11 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 , .{ struct_type, fname_camel_upper, fname });
                 if (fty_ele.isScalar()) {
                     try writer.print(
-                        "try b.prepend({s}, t.{s}[j]);\n",
+                        "try b.prepend({s}, rcv.{s}[j]);\n",
                         .{ zigScalarTypename(fty_ele), fname },
                     );
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
-                    try writer.print("try t.{s}[j].pack(b)\n", .{fname});
+                    try writer.print("try rcv.{s}[j].pack(b)\n", .{fname});
                 } else {
                     try writer.print("try b.prependUOff({s}_offsets[j]);\n", .{fname});
                 }
@@ -382,13 +382,13 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             } else if (field_base_ty == .STRUCT) {
                 if (isStruct(field_ty.Index(), schema)) continue;
                 try writer.print(
-                    "const {s}_off = try t.{s}.pack(b);\n",
-                    .{ struct_type, fname },
+                    "const {0s}_off = try rcv.{0s}.pack(b);\n",
+                    .{fname},
                 );
             } else if (field_base_ty == .UNION) {
                 try writer.print(
-                    "const {s}_off = try t.{s}.pack(b);\n",
-                    .{ struct_type, fname },
+                    "const {0s}_off = try rcv.{0s}.pack(b);\n",
+                    .{fname},
                 );
             } else unreachable;
         }
@@ -410,7 +410,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 if (is_optional) todo("optional", .{});
                 if (field_base_ty != .UNION)
                     try writer.print(
-                        "try {s}.Add{s}(b, t.{s});\n",
+                        "try {s}.Add{s}(b, rcv.{s});\n",
                         .{ struct_type, fname_camel_upper, fname },
                     );
 
@@ -418,12 +418,12 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             } else {
                 if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        "{s}_off = try t.{s}.pack(b);\n",
-                        .{ struct_type, fname },
+                        "{0s}_off = try rcv.{0s}.pack(b);\n",
+                        .{fname},
                     );
                 } else if (field_base_ty == .UNION) {
                     try writer.print(
-                        "try {s}.Add{s}T(b, t.{s});\n",
+                        "try {s}.Add{s}T(b, rcv.{s});\n",
                         .{ struct_type, fname_camel_upper, fname },
                     );
                 }
@@ -440,7 +440,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
 fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
-    try writer.print("pub fn unpackTo(src: {s}, t: *{s}T) void {{\n", .{ struct_type, struct_type });
+    try writer.print("pub fn unpackTo(rcv: {s}, t: *{s}T) void {{\n", .{ struct_type, struct_type });
     {
         var i: u32 = 0;
         while (i < o.FieldsLen()) : (i += 1) {
@@ -452,15 +452,15 @@ fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
             const fname_upper_camel = util.fmtCamelUpper(fname);
             if (field_base_ty.isScalar() or field_base_ty == .STRING) {
                 if (field_base_ty.isUnion()) continue;
-                try writer.print("t.{s} = src.{s}();\n", .{ fname, fname_upper_camel });
+                try writer.print("t.{s} = rcv.{s}();\n", .{ fname, fname_upper_camel });
             } else if (field_base_ty == .VECTOR and
                 field_ty.Element() == .UCHAR and
                 field_ty.Index() == -1)
             {
-                try writer.print("t.{s} = src.{s}Bytes();\n", .{ fname, fname_upper_camel });
+                try writer.print("t.{s} = rcv.{s}Bytes();\n", .{ fname, fname_upper_camel });
             } else if (field_base_ty == .VECTOR) {
                 try writer.print(
-                    \\const {0s}_len = src.{1s}Len();
+                    \\const {0s}_len = rcv.{1s}Len();
                     \\t.{0s} = try std.ArrayListUnmanaged(
                 , .{ fname, fname_upper_camel });
                 try genTypeBasic(field_ty, schema, .keep_namespace, writer);
@@ -472,13 +472,13 @@ fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
                 if (field_ty.Element() == .STRUCT) {
                     _ = try writer.write("var x: ");
                     try genTypeBasic(field_ty, schema, .keep_namespace, writer);
-                    try writer.print(" = undefined;\nsrc.{s}(&x, j);\n", .{fname_upper_camel});
+                    try writer.print(" = undefined;\nrcv.{s}(&x, j);\n", .{fname_upper_camel});
                 }
                 try writer.print("t.{s}.appendAssumeCapacity(", .{fname});
                 if (field_ty.Element().isScalar()) {
-                    try writer.print("src.{s}(j)", .{fname_upper_camel});
+                    try writer.print("rcv.{s}(j)", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRING) {
-                    try writer.print("src.{s}(j)", .{fname_upper_camel});
+                    try writer.print("rcv.{s}(j)", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRUCT) {
                     _ = try writer.write("x.unpack()");
                 } else {
@@ -491,12 +491,12 @@ fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
                     \\
                 );
             } else if (field_base_ty == .STRUCT) {
-                try writer.print("t.{s} = src.{s}.unpack();\n", .{ fname, fname });
+                try writer.print("t.{s} = rcv.{s}.unpack();\n", .{ fname, fname });
             } else if (field_base_ty == .UNION) {
                 try writer.print(
                     \\var {0s}_table = Table{{}};
-                    \\if (src.{1s}(&{0s}_table)) {{
-                    \\t.{0s} = src.{0s}().unpack({0s}_table); // FIXME can't be right
+                    \\if (rcv.{1s}(&{0s}_table)) {{
+                    \\t.{0s} = rcv.{0s}().unpack({0s}_table); // FIXME can't be right
                     \\}}
                     \\
                 , .{ fname, fname_upper_camel });
@@ -506,9 +506,9 @@ fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
 
     _ = try writer.write("}\n\n");
     try writer.print(
-        \\pub fn  unpack(src: {s}) {s}T {{
+        \\pub fn  unpack(rcv: {s}) {s}T {{
         \\var t = {s}T{{}};
-        \\src.unpackTo(&t);
+        \\rcv.unpackTo(&t);
         \\return t;
         \\}}
         \\
@@ -519,7 +519,7 @@ fn genNativeTableUnpack(o: Object, schema: Schema, writer: anytype) !void {
 fn genNativeStructPack(o: Object, schema: Schema, writer: anytype) !void {
     const olastname = lastName(o.Name());
     try writer.print(
-        \\pub fn pack(t: {0s}, b: *Builder) !void {{
+        \\pub fn pack(rcv: {0s}, b: *Builder) !void {{
         \\return {0s}.Create(b
     , .{olastname});
 
@@ -542,7 +542,7 @@ fn structPackArgs(o: Object, nameprefix: *NamePrefix, schema: Schema, writer: an
             try nameprefix.appendSlice(field.Name());
             try nameprefix.append('_');
             try structPackArgs(o2, nameprefix, schema, writer);
-        } else try writer.print(", t.{s}{s}", .{ nameprefix.constSlice(), field.Name() });
+        } else try writer.print(", rcv.{s}{s}", .{ nameprefix.constSlice(), field.Name() });
     }
 }
 
@@ -687,9 +687,9 @@ fn getUByteSlice(o: Object, field: Field, writer: anytype) !void {
     try offsetPrefix(field, writer);
     _ = try writer.write(
         \\return rcv._tab.byteVector(o + rcv._tab.pos);
-        \\}}
+        \\}
         \\return "";
-        \\}}
+        \\}
         \\
         \\
     );
@@ -698,23 +698,24 @@ fn getUByteSlice(o: Object, field: Field, writer: anytype) !void {
 /// writes the function name that is able to read a value of the given type.
 fn genGetter(ty: Type, schema: Schema, writer: anytype) !void {
     switch (ty.BaseType()) {
-        .STRING => _ = try writer.write("rcv._tab.byteVector"),
+        .STRING => _ = try writer.write("rcv._tab.byteVector("),
         .UNION => _ = try writer.write("rcv._tab.union_"),
         .VECTOR => switch (ty.Element()) {
-            .STRING => _ = try writer.write("rcv._tab.byteVector"),
-            .UNION => _ = try writer.write("rcv._tab.union_"),
+            .STRING => _ = try writer.write("rcv._tab.byteVector("),
+            .UNION => _ = try writer.write("rcv._tab.union_("),
             .VECTOR => todo(".VECTOR .VECTOR", .{}),
             else => |ele| {
                 _ = try writer.write("try rcv._tab.read(");
-                if (ele.isScalar() or ele == .STRING)
-                    _ = try writer.write(zigScalarTypename(ele))
-                else
-                    todo("genGetter .VECTOR {}", .{ele});
+                if (ele.isScalar() or ele == .STRING) {
+                    _ = try writer.write(zigScalarTypename(ele));
+                    _ = try writer.write(", ");
+                } else todo("genGetter .VECTOR {}", .{ele});
             },
         },
         else => {
             _ = try writer.write("try rcv._tab.read(");
             try genTypeBasic(ty, schema, .skip_namespace, writer);
+            _ = try writer.write(", ");
         },
     }
 }
@@ -762,6 +763,7 @@ fn genConstant(field: Field, field_base_ty: BaseType, schema: Schema, writer: an
             // todo("genConstant() .FLOAT", .{});
             try writer.print("{}", .{field.DefaultReal()});
         },
+
         else => {
             const field_ty = field.Type().?;
             if (field_ty.Index() == -1)
@@ -855,7 +857,7 @@ fn structBuilderBody(o: Object, nameprefix: *NamePrefix, schema: Schema, writer:
             _ = try writer.write("try b.prepend");
             try genMethod(field, schema, writer);
             try writer.print(
-                \\, {s}{s});
+                \\ {s}{s});
                 \\
             , .{ nameprefix.constSlice(), field.Name() });
         }
@@ -934,8 +936,10 @@ fn getScalarFieldOfTable(_: Object, field: Field, schema: Schema, writer: anytyp
     const field_ty = field.Type().?;
     const fname_camel_upper = util.fmtCamelUpper(fname);
     try writer.print(
-        \\pub fn {s}(rcv: {s}) 
-    , .{ fname_camel_upper, lastName(fname) });
+        \\pub fn {s}(rcv:  
+    , .{fname_camel_upper});
+    try genTypeBasic(field_ty, schema, .keep_namespace, writer);
+    _ = try writer.write(") ");
     try genTypeBasic(field_ty, schema, .keep_namespace, writer);
     try offsetPrefix(field, writer);
     const field_base_ty = field_ty.BaseType();
@@ -947,11 +951,11 @@ fn getScalarFieldOfTable(_: Object, field: Field, schema: Schema, writer: anytyp
     try genGetter(field_ty, schema, writer);
     try writer.print(
         \\o + rcv._tab.pos);
-        \\}}
         \\
     , .{});
     if (isScalarOptional(field, field_base_ty)) _ = try writer.write("\nreturn v;");
     _ = try writer.write(
+        \\}
         \\return 
     );
     try genConstant(field, field_base_ty, schema, writer);
@@ -969,7 +973,7 @@ fn getStringField(o: Object, field: Field, schema: Schema, writer: anytype) !voi
     const fname_camel_upper = util.fmtCamelUpper(fname);
     const oname = o.Name();
     try writer.print(
-        \\pub fn {s}(t: {s}) 
+        \\pub fn {s}(rcv: {s}) 
     , .{ fname_camel_upper, lastName(oname) });
     try genTypeBasic(field_ty, schema, .keep_namespace, writer);
     try offsetPrefix(field, writer);
@@ -978,7 +982,7 @@ fn getStringField(o: Object, field: Field, schema: Schema, writer: anytype) !voi
     );
     try genGetter(field_ty, schema, writer);
     _ = try writer.write(
-        \\(o + t._tab.pos);
+        \\o + rcv._tab.pos);
         \\}
         \\return "";
         \\}
@@ -1011,10 +1015,12 @@ fn getStructFieldOfTable(_: Object, field: Field, schema: Schema, writer: anytyp
 
     // Get the value of a union from an object.
     try writer.print(
-        \\pub fn {s}(obj: *
+        \\pub fn {s}(rcv: 
     , .{fname_camel_upper});
     try genTypeBasic(field_ty, schema, .keep_namespace, writer);
-    _ = try writer.write(") ");
+    _ = try writer.write(", obj: *");
+    try genTypeBasic(field_ty, schema, .keep_namespace, writer);
+    _ = try writer.write(") ?*");
     try genTypeBasic(field_ty, schema, .keep_namespace, writer);
     _ = try writer.write(" ");
     try offsetPrefix(field, writer);
@@ -1025,10 +1031,10 @@ fn getStructFieldOfTable(_: Object, field: Field, schema: Schema, writer: anytyp
         _ = try writer.write("const x = rcv._tab.indirect(o + rcv._tab.pos);\n");
 
     _ = try writer.write(
-        \\obj.init(rcv._tab.Bytes, x);
+        \\obj.init(rcv._tab.bytes, x);
         \\return obj;
         \\}
-        \\return nil;
+        \\return null;
         \\}
         \\
         \\
@@ -1061,7 +1067,7 @@ fn getUnionField(o: Object, field: Field, schema: Schema, writer: anytype) !void
     try offsetPrefix(field, writer);
     try genGetter(field_ty, schema, writer);
     _ = try writer.write(
-        \\(obj, o);
+        \\obj, o);
         \\return true;
         \\}
         \\return false;
@@ -1132,7 +1138,7 @@ fn getMemberOfVectorOfNonStruct(o: Object, field: Field, schema: Schema, writer:
 
     try genGetter(field_ty, schema, writer);
     try writer.print(
-        \\, a + j * {});
+        \\a + j * {});
         \\}}
         \\
     , .{inlineSize(field_ty, schema)});
@@ -1203,7 +1209,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
     const fname_camel_upper = util.fmtCamelUpper(fname);
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
-    const alignment = if (ele.isScalar())
+    const alignment = if (ele.isScalar() or ele == .STRING)
         field_ty.ElementSize()
     else switch (ele) {
         .STRUCT => blk: {
@@ -1223,7 +1229,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
     };
     try writer.print(
         \\pub fn Start{s}Vector(b: *Builder, num_elems: u32) !u32 {{
-        \\return try b.startVector({}, num_elems, {});
+        \\return b.startVector({}, num_elems, {});
         \\}}
         \\
     , .{ fname_camel_upper, field_ty.ElementSize(), alignment });
@@ -1232,7 +1238,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
 /// Get the offset of the end of a table.
 fn getEndOffsetOnTable(_: Object, writer: anytype) !void {
     try writer.print(
-        \\pub fn End(b: *Builder) u32 {{
+        \\pub fn End(b: *Builder) !u32 {{
         \\return b.endObject();
         \\}}
         \\

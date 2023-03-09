@@ -12,7 +12,7 @@ pub const std_options = struct {
 };
 
 fn usage(params: []const clap.Param(clap.Help), res: anytype) !void {
-    std.debug.print("usage: {s} <args> <files>\n<files>: either .fbs or .bfbs files depending on args.\n<args>:\n", .{res.exe_arg.?});
+    std.debug.print("usage: {s} <args> <files>\n<files>: either .fbs or .bfbs files.\n<args>:\n", .{res.exe_arg.?});
     try clap.help(std.io.getStdErr().writer(), clap.Help, params, .{});
 }
 
@@ -86,8 +86,9 @@ pub fn main() !void {
                 // std.debug.print("stdout={s}\n", .{exec_res.stdout});
                 if (exec_res.term != .Exited or exec_res.term.Exited != 0) {
                     for (argv.items) |it| std.debug.print("{s} ", .{it});
-                    std.debug.print("\n", .{});
-                    std.debug.print("{s}", .{exec_res.stderr});
+                    std.debug.print("\nerror: the flatc command failed\n", .{});
+                    std.debug.print("stderr: {s}\n", .{exec_res.stderr});
+                    std.debug.print("stdout: {s}\n", .{exec_res.stdout});
                     std.os.exit(1);
                 }
 

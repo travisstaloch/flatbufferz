@@ -113,10 +113,6 @@ pub const GenStep = struct {
                 \\pub const {s} = @import("{s}.fb.zig");
                 \\
             , .{ buf[0..name.len], path });
-            std.debug.print(
-                \\pub const {s} = @import("{s}.fb.zig");
-                \\
-            , .{ buf[0..name.len], path });
         }
     }
 };

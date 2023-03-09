@@ -170,7 +170,6 @@ fn genEnum(
 ) !void {
     // Generate enum declarations.
     // TODO check if already generated
-
     try genComment(e, writer);
     const base_type = e.UnderlyingType().?.BaseType();
     try genEnumType(e, writer, schema, base_type, imports);
@@ -1471,7 +1470,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
     const alignment = if (ele.isScalar() or ele == .STRING)
-        field_ty.ElementSize()
+        scalar_sizes[@enumToInt(ele)].?
     else switch (ele) {
         .STRUCT => blk: {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
@@ -1670,8 +1669,8 @@ pub fn generate(
     basename: []const u8,
     opts: anytype,
 ) !void {
-    std.debug.print(
-        "bfbs_path={s} gen_path={s} basename={s}\n",
+    std.log.debug(
+        "bfbs_path={s} gen_path={s} basename={s}",
         .{ bfbs_path, gen_path, basename },
     );
     var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
@@ -1680,6 +1679,7 @@ pub fn generate(
     else
         0;
     const file_ident = try std.fmt.bufPrint(&buf, "//{s}.fbs", .{basename[dirname_len..]});
+    std.log.debug("file_ident={s}", .{file_ident});
     const f = try std.fs.cwd().openFile(bfbs_path, .{});
     defer f.close();
     const content = try f.readToEndAlloc(alloc, std.math.maxInt(u16));
@@ -1690,10 +1690,12 @@ pub fn generate(
     var one_file_code = std.ArrayList(u8).init(alloc);
     const owriter = one_file_code.writer();
     var imports = TypenameSet.init(alloc);
-
+    std.log.debug("schema.EnumsLen()={}", .{schema.EnumsLen()});
     for (0..schema.EnumsLen()) |i| {
         const e = schema.Enums(i).?;
-        const same_file = mem.eql(u8, e.DeclarationFile().?, file_ident);
+        const decl_file = e.DeclarationFile();
+        const same_file = decl_file.len == 0 or mem.eql(u8, decl_file, file_ident);
+        std.log.debug("same_file={} decl_file={s}", .{ same_file, decl_file });
         if (!same_file) continue;
         var enumcode: std.ArrayListUnmanaged(u8) = .{};
         defer enumcode.deinit(alloc);
@@ -1713,7 +1715,7 @@ pub fn generate(
             try saveType(
                 gen_path,
                 bfbs_path,
-                e.DeclarationFile().?,
+                decl_file,
                 basename,
                 e.Name(),
                 enumcode.items,
@@ -1722,11 +1724,13 @@ pub fn generate(
                 .enum_,
             );
     }
+    std.log.debug("schema.ObjectsLen()={}", .{schema.ObjectsLen()});
     for (0..schema.ObjectsLen()) |i| {
         const o = schema.Objects(i).?;
-        const same_file = mem.eql(u8, o.DeclarationFile().?, file_ident);
+        const decl_file = o.DeclarationFile();
+        const same_file = decl_file.len == 0 or mem.eql(u8, decl_file, file_ident);
         if (!same_file) continue;
-        std.log.info("//writing struct {s} {?s}", .{ o.Name(), o.DeclarationFile() });
+        std.log.info("//writing struct {s} {s}", .{ o.Name(), decl_file });
         var structcode: std.ArrayListUnmanaged(u8) = .{};
         defer structcode.deinit(alloc);
         const swriter = structcode.writer(alloc);
@@ -1737,7 +1741,7 @@ pub fn generate(
             try saveType(
                 gen_path,
                 bfbs_path,
-                o.DeclarationFile().?,
+                decl_file,
                 basename,
                 o.Name(),
                 structcode.items,

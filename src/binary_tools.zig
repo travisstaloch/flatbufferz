@@ -72,7 +72,7 @@ fn writeAttributes(
         if (i != 0) _ = try writer.write(", ");
         if (e.Attributes(i)) |a| {
             _ = try writer.write(a.Key());
-            if (a.Value()) |v| try writer.print(": \"{s}\"", .{v});
+            if (a.Value().len != 0) try writer.print(": \"{s}\"", .{a.Value()});
         }
     }
     if (len > 0 and opts.write_parens) _ = try writer.write(") ");

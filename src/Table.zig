@@ -123,10 +123,6 @@ fn Presence(comptime T: type) type {
     return union(enum) {
         required,
         optional: ?T,
-
-        pub fn Return(comptime p: @This()) type {
-            return if (p == .optional) ?T else T;
-        }
     };
 }
 
@@ -134,14 +130,14 @@ pub fn String(
     comptime T: type,
     comptime off: u32,
     comptime presence: Presence([]const u8),
-) fn (T) presence.Return() {
+) fn (T) []const u8 {
     return struct {
-        pub fn func(t: T) presence.Return() {
+        pub fn func(t: T) []const u8 {
             const o = t._tab.offset(off);
             return if (o != 0)
                 t._tab.string(o + t._tab.pos)
             else if (presence == .optional)
-                presence.optional
+                presence.optional.?
             else
                 unreachable;
         }

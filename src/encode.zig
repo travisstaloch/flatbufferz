@@ -58,11 +58,11 @@ pub fn read(comptime T: type, buf: []const u8) T {
             const I = @Type(.{
                 .Int = .{
                     .signedness = taginfo.Int.signedness,
-                    .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
-                        unreachable,
+                    // TODO remove @max() here, should gen correctly tagged enums
+                    .bits = @max(comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
+                        unreachable, 8),
                 },
             });
-            // return @intToEnum(T, mem.readIntLittle(I, buf[0..@sizeOf(I)]));
             const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);
             return std.meta.intToEnum(T, i) catch
                 std.debug.panic(
@@ -77,11 +77,26 @@ pub fn read(comptime T: type, buf: []const u8) T {
 /// write a little-endian T from a byte slice.
 pub fn write(comptime T: type, buf: []u8, t: T) void {
     const info = @typeInfo(T);
-    if (info == .Float) {
-        const I = @Type(.{ .Int = .{
-            .signedness = .unsigned,
-            .bits = info.Float.bits,
-        } });
-        mem.writeIntLittle(I, buf[0..@sizeOf(T)], @bitCast(I, t));
-    } else mem.writeIntLittle(T, buf[0..@sizeOf(T)], t);
+    switch (info) {
+        .Float => {
+            const I = @Type(.{ .Int = .{
+                .signedness = .unsigned,
+                .bits = info.Float.bits,
+            } });
+            mem.writeIntLittle(I, buf[0..@sizeOf(T)], @bitCast(I, t));
+        },
+        .Enum => {
+            const Tag = info.Enum.tag_type;
+            const taginfo = @typeInfo(Tag);
+            const I = @Type(.{
+                .Int = .{
+                    .signedness = taginfo.Int.signedness,
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
+                        unreachable,
+                },
+            });
+            mem.writeIntLittle(I, buf[0..@sizeOf(I)], @enumToInt(t));
+        },
+        else => mem.writeIntLittle(T, buf[0..@sizeOf(T)], t),
+    }
 }

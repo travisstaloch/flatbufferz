@@ -58,9 +58,10 @@ pub fn read(comptime T: type, buf: []const u8) T {
             const I = @Type(.{
                 .Int = .{
                     .signedness = taginfo.Int.signedness,
-                    // TODO remove @max() here, should gen correctly tagged enums
-                    .bits = @max(comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
-                        unreachable, 8),
+                    // ceilPowerOfTwo(@max()) is needed here for union(enum)
+                    // Tags which may have odd tag sizes
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(taginfo.Int.bits, 8)) catch
+                        unreachable,
                 },
             });
             const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);

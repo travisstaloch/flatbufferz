@@ -18,6 +18,11 @@ pub const Struct = struct {
     pub fn init(bytes: []const u8, pos: u32) Struct {
         return .{ ._tab = .{ .bytes = bytes, .pos = pos } };
     }
+
+    /// reads a T from t.bytes starting at "off". supports float and int Ts
+    pub fn read(s: Struct, comptime T: type, off: u32) T {
+        return encode.read(T, s._tab.bytes[off..]);
+    }
 };
 
 pub fn init(bytes: []const u8, pos: u32) Table {

@@ -57,7 +57,7 @@ pub fn main() !void {
     try Monster.AddInventory(&builder, inv);
     try Monster.AddColor_(&builder, .Red);
     try Monster.AddWeapons(&builder, weapons);
-    try Monster.AddEquippedType(&builder, .Weapon);
+    try Monster.AddEquippedType(&builder, .weapon);
     try Monster.AddEquipped(&builder, axe);
     const orc = try Monster.End(&builder);
     try builder.finish(orc);
@@ -74,10 +74,10 @@ pub fn main() !void {
     // pass in the offset of `builder.head`, as the builder actually constructs the buffer
     // backwards.
     const monster = Monster.GetRootAs(buf, 0);
-    try testing.expectEqual(@as(u16, 150), monster.Mana());
-    try testing.expectEqual(@as(u16, 300), monster.Hp());
+    try testing.expectEqual(@as(i16, 150), monster.Mana());
+    try testing.expectEqual(@as(i16, 300), monster.Hp());
     try testing.expectEqualStrings("Orc", monster.Name());
-    try testing.expectEqual(Color.Red, monster.Color());
+    try testing.expectEqual(Color.Red, monster.Color_());
     try testing.expectApproxEqAbs(@as(f32, 1.0), monster.Pos().?.X(), std.math.f32_epsilon);
     try testing.expectApproxEqAbs(@as(f32, 2.0), monster.Pos().?.Y(), std.math.f32_epsilon);
     try testing.expectApproxEqAbs(@as(f32, 3.0), monster.Pos().?.Z(), std.math.f32_epsilon);
@@ -89,7 +89,7 @@ pub fn main() !void {
         try testing.expectEqual(@intCast(u8, i), monster.Inventory(i));
 
     const expected_weapon_names = [_][]const u8{ "Sword", "Axe" };
-    const expected_weapon_damages = [_]u32{ 3, 5 };
+    const expected_weapon_damages = [_]i16{ 3, 5 };
 
     for (0..monster.WeaponsLen()) |i| {
         if (monster.Weapons(i)) |weapon| {
@@ -100,16 +100,16 @@ pub fn main() !void {
 
     // For FlatBuffer `union`s, you can get the type of the union, as well as the union
     // data itself.
-    try testing.expectEqual(Equipment.Weapon, monster.EquippedType());
+    try testing.expectEqual(Equipment.Tag.weapon, monster.EquippedType());
     if (monster.Equipped()) |union_table| {
         // An example of how you can appropriately convert the table depending on the
         // FlatBuffer `union` type. You could add `else if` and `else` clauses to handle
         // other FlatBuffer `union` types for this field. (Similarly, this could be
         // done in a switch statement.)
-        if (monster.EquippedType() == .Weapon) {
+        if (monster.EquippedType() == .weapon) {
             const w = Weapon.init(union_table.bytes, union_table.pos);
             try testing.expectEqualStrings("Axe", w.Name());
-            try testing.expectEqual(@as(u16, 5), w.Damage());
+            try testing.expectEqual(@as(i16, 5), w.Damage());
         }
     }
 

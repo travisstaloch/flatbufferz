@@ -30,10 +30,10 @@ pub const EnumVal = struct {
     pub const Name = Table.ReadByteVec(@This(), 4, null);
     pub const Value = Table.ReadWithDefault(@This(), i32, 6, .{ .optional = 0 });
     pub const UnionType = Table.ReadStructIndirect(@This(), refl.Type, 10);
-    pub const AttributesLen = Table.VectorLen(@This(), 12);
-    pub const Attributes = Table.VectorAt(@This(), KeyValue, 12, null);
-    pub const DocumentationLen = Table.VectorLen(@This(), 14);
-    pub const Documentation = Table.VectorAt(@This(), []const u8, 14, null);
+    pub const DocumentationLen = Table.VectorLen(@This(), 12);
+    pub const Documentation = Table.VectorAt(@This(), []const u8, 12, null);
+    pub const AttributesLen = Table.VectorLen(@This(), 14);
+    pub const Attributes = Table.VectorAt(@This(), KeyValue, 14, null);
     pub const DeclarationFile = Table.String(@This(), 16, .{ .optional = "" });
 };
 

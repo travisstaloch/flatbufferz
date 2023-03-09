@@ -4,11 +4,11 @@ const testing = std.testing;
 const builtin = @import("builtin");
 const fb = @import("flatbufferz");
 const Builder = fb.Builder;
-const Monster = @import("../gen/Monster.fb.zig").Monster;
-const Weapon = @import("../gen/Weapon.fb.zig").Weapon;
-const Vec3 = @import("../gen/Vec3.fb.zig").Vec3;
-const Color = @import("../gen/Color.fb.zig").Color;
-const Equipment = @import("../gen/Equipment.fb.zig").Equipment;
+const Monster = @import("generated").Monster.Monster;
+const Weapon = @import("generated").Weapon.Weapon;
+const Vec3 = @import("generated").Vec3.Vec3;
+const Color = @import("generated").Color.Color;
+const Equipment = @import("generated").Equipment.Equipment;
 
 pub const std_options = struct {
     pub const log_level = std.meta.stringToEnum(std.log.Level, @tagName(@import("build_options").log_level)).?;

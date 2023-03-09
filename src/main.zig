@@ -69,9 +69,13 @@ pub fn main() !void {
                 const gen_path_full = try std.fs.path.join(alloc, &.{ gen_path, dirname });
                 try argv.appendSlice(&.{ "-o", gen_path_full });
                 try argv.append(filename);
+                // std.debug.print("argv={s}\n", .{argv.items});
+                // TODO why is this necessary?
+                // try std.fs.cwd().makePath(gen_path_full);
                 const exec_res = try std.ChildProcess.exec(.{ .allocator = alloc, .argv = argv.items });
                 // std.debug.print("term={}\n", .{exec_res.term});
-                // std.debug.print("stderr={s}\n", .{exec_res.stderr});
+                if (exec_res.stderr.len > 0)
+                    std.debug.print("stderr={s}\n", .{exec_res.stderr});
                 // std.debug.print("stdout={s}\n", .{exec_res.stdout});
                 if (exec_res.term != .Exited or exec_res.term.Exited != 0) {
                     for (argv.items) |it| std.debug.print("{s} ", .{it});

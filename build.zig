@@ -1,4 +1,5 @@
 const std = @import("std");
+const sdk = @import("sdk.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -45,6 +46,15 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    // generate files that need to be avaliable in tests
+    var gen_step = try sdk.GenStep.create(b, exe, &.{
+        "examples/sample.fbs",
+    });
+    const gen_mod = b.createModule(.{
+        .source_file = gen_step.module.source_file,
+        .dependencies = &.{.{ .name = "flatbufferz", .module = lib_mod }},
+    });
+
     const exe_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/tests.zig" },
         .target = target,
@@ -52,7 +62,11 @@ pub fn build(b: *std.Build) !void {
     });
     exe_tests.addOptions("build_options", build_options);
     exe_tests.addModule("flatbufferz", lib_mod);
+    exe_tests.addModule("generated", gen_mod);
     exe_tests.main_pkg_path = ".";
+    // exe_tests.step.dependOn(b.getInstallStep());
+    exe_tests.step.dependOn(&gen_step.step);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
 
@@ -71,7 +85,9 @@ pub fn build(b: *std.Build) !void {
         });
         sample_exe.addOptions("build_options", build_options);
         sample_exe.addModule("flatbufferz", lib_mod);
-        sample_exe.main_pkg_path = ".";
+        sample_exe.addModule("generated", gen_mod);
+        sample_exe.step.dependOn(&gen_step.step);
+
         sample_exe.install();
 
         const sample_run_cmd = sample_exe.run();

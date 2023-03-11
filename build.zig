@@ -47,9 +47,10 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_cmd.step);
 
     // generate files that need to be avaliable in tests
-    var gen_step = try sdk.GenStep.create(b, exe, &.{
+    const gen_step = try sdk.GenStep.create(b, exe, &.{
         "examples/sample.fbs",
-    });
+        "examples/monster_test.fbs",
+    }, &.{ "-I", "examples/include_test" });
     const gen_mod = b.createModule(.{
         .source_file = gen_step.module.source_file,
         .dependencies = &.{.{ .name = "flatbufferz", .module = lib_mod }},
@@ -64,7 +65,6 @@ pub fn build(b: *std.Build) !void {
     exe_tests.addModule("flatbufferz", lib_mod);
     exe_tests.addModule("generated", gen_mod);
     exe_tests.main_pkg_path = ".";
-    // exe_tests.step.dependOn(b.getInstallStep());
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");

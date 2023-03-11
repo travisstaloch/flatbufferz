@@ -14,6 +14,7 @@ pub const GenStep = struct {
         b: *std.build.Builder,
         exe: *std.build.LibExeObjStep,
         files: []const []const u8,
+        args: []const []const u8,
     ) !*GenStep {
         const self = b.allocator.create(GenStep) catch unreachable;
         const cache_root = std.fs.path.resolve(
@@ -57,10 +58,9 @@ pub const GenStep = struct {
 
         try b.cache_root.handle.makePath(flatc_zig_path);
 
-        run_cmd.addArgs(&.{ "-o", cache_path, "-I", "examples" });
-
-        for (files) |file|
-            run_cmd.addArg(file);
+        run_cmd.addArgs(&.{ "-o", cache_path });
+        run_cmd.addArgs(args);
+        run_cmd.addArgs(files);
 
         self.step.dependOn(&run_cmd.step);
 
@@ -77,15 +77,25 @@ pub const GenStep = struct {
         defer file.close();
         const writer = file.writer();
 
-        // TODO include sub dirs
-        var dir = try std.fs.cwd().openIterableDir(self.cache_path, .{});
+        try self.visit(self.cache_path, writer);
+    }
+
+    // recursively visit path and child directories
+    fn visit(self: *const GenStep, path: []const u8, writer: anytype) !void {
+        var dir = try std.fs.cwd().openIterableDir(path, .{});
         defer dir.close();
         var iter = dir.iterate();
         while (try iter.next()) |entry| {
-            if (entry.kind != .File) continue; // TODO include sub dirs
+            if (entry.kind == .Directory) {
+                const sub_path = try std.fs.path.join(self.b.allocator, &.{ path, entry.name });
+                defer self.b.allocator.free(sub_path);
+                try self.visit(sub_path, writer);
+                continue;
+            }
+            if (entry.kind != .File) continue;
+            // extract file name identifier: a/b/foo.fb.zig => foo
             const endidx = std.mem.lastIndexOf(u8, entry.name, ".fb.zig") orelse
                 continue;
-
             const startidx = if (std.mem.lastIndexOfScalar(
                 u8,
                 entry.name[0..endidx],
@@ -94,25 +104,35 @@ pub const GenStep = struct {
             const name = entry.name[startidx..endidx];
             // remove illegal characters to make a zig identifier
             var buf: [256]u8 = undefined;
-            std.mem.copy(u8, &buf, name);
-            if (!std.ascii.isAlphabetic(name[0]) and name[0] != '_') {
+            var fbs = std.io.fixedBufferStream(&buf);
+            const fbswriter = fbs.writer();
+            if (self.cache_path.len < path.len) {
+                _ = try fbswriter.write(path[self.cache_path.len + 1 ..]);
+                _ = try fbswriter.writeByte('_');
+            }
+            _ = try fbswriter.write(name);
+            const ident = fbs.getWritten();
+            if (!std.ascii.isAlphabetic(ident[0]) and ident[0] != '_') {
                 std.log.err(
                     "invalid identifier '{s}'. filename must start with alphabetic or underscore",
-                    .{name},
+                    .{ident},
                 );
                 return error.InvalidIdentifier;
             }
-            for (name[1..], 0..) |c, i| {
-                if (!std.ascii.isAlphanumeric(c)) buf[i + 1] = '_';
+            for (ident, 0..) |c, i| {
+                if (!(std.ascii.isAlphanumeric(c) or c == '-')) ident[i] = '_';
             }
-            const path = if (std.mem.startsWith(u8, entry.name, "examples/"))
-                entry.name[0..endidx]["examples/".len..]
+
+            if (self.cache_path.len < path.len)
+                try writer.print(
+                    \\pub const {s} = @import("{s}{c}{s}.fb.zig");
+                    \\
+                , .{ ident, path[self.cache_path.len + 1 ..], std.fs.path.sep, entry.name[0..endidx] })
             else
-                entry.name[0..endidx];
-            try writer.print(
-                \\pub const {s} = @import("{s}.fb.zig");
-                \\
-            , .{ buf[0..name.len], path });
+                try writer.print(
+                    \\pub const {s} = @import("{s}.fb.zig");
+                    \\
+                , .{ ident, entry.name[0..endidx] });
         }
     }
 };

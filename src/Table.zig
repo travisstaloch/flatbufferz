@@ -149,7 +149,7 @@ pub fn byteVector(t: Table, off_: u32) []const u8 {
     const off = off_ + t.read(u32, off_);
     const start = off + size_u32;
     const length = t.read(u32, off);
-    std.log.debug("start={} length={} bytes.len={} off={}", .{ start, length, t.bytes.len, off });
+    // std.log.debug("start={} length={} bytes.len={} off={}", .{ start, length, t.bytes.len, off });
     return t.bytes[start .. start + length];
 }
 

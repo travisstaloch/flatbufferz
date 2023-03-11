@@ -90,7 +90,7 @@ fn genTypeBasic(
             .keep_namespace => e.Name(),
             .skip_namespace => lastName(e.Name()),
         };
-        try imports.put(name, {});
+        try imports.put(e.Name(), {});
         _ = try writer.write(name);
     } else if (base_ty.isScalar() or base_ty == .STRING)
         _ = try writer.write(zigScalarTypename(base_ty))
@@ -100,7 +100,7 @@ fn genTypeBasic(
             .keep_namespace => o.Name(),
             .skip_namespace => lastName(o.Name()),
         };
-        try imports.put(name, {});
+        try imports.put(o.Name(), {});
         _ = try writer.write(name);
     } else if (base_ty == .NONE) {
         _ = try writer.write("void");
@@ -114,7 +114,7 @@ fn genTypeBasic(
                 .keep_namespace => o.Name(),
                 .skip_namespace => lastName(o.Name()),
             };
-            try imports.put(name, {});
+            try imports.put(o.Name(), {});
             _ = try writer.write(name);
         } else todo("genTypeBasic() base_ty={} ele={}", .{ base_ty, ele });
     } else todo("genTypeBasic() base_ty={}", .{base_ty});
@@ -188,13 +188,13 @@ fn genEnum(
         _ = try writer.write("\n\npub const Tag = std.meta.Tag(@This());\n");
 
     try writer.print(
-        \\pub fn tagName(v: {s}) []const u8 {{
+        \\pub fn tagName(v: @This()) []const u8 {{
         \\  return @tagName(v);
         \\}}
         \\}};
         \\
         \\
-    , .{e.Name()});
+    , .{});
 }
 
 /// gen a union(E) decl
@@ -223,7 +223,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
     const last_name = lastName(ename);
     try writer.print(
         \\
-        \\pub fn pack(rcv: {s}T, b: *Builder) !void {{
+        \\pub fn pack(rcv: {s}T, __builder: *Builder) !void {{
         \\  switch (rcv) {{
         \\
     ,
@@ -236,7 +236,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
         if (ev.Value() == 0)
             try writer.print("    .{s} => {{}},\n", .{ev.Name()})
         else
-            try writer.print("    .{s} => |x| try x.pack(b),\n", .{ev.Name()});
+            try writer.print("    .{s} => |x| try x.pack(__builder),\n", .{ev.Name()});
     }
     _ = try writer.write(
         \\  }
@@ -264,7 +264,7 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
             try writer.print(".{s} => {{\n", .{ev.Name()});
 
             _ = try writer.write("var x = ");
-            try genTypeBasic(ev.UnionType().?, schema, .skip_namespace, imports, writer);
+            try genTypeBasic(ev.UnionType().?, schema, .keep_namespace, imports, writer);
             try writer.print(
                 \\.init(table.bytes, table.pos);
                 \\return .{{ .{s} = x.unpack() }};
@@ -330,8 +330,128 @@ fn saveType(
     const f = try std.fs.cwd().createFile(outpath, .{});
     defer f.close();
     try genPrelude(bfbs_path, decl_file, basename, typename, imports, f.writer());
-
     _ = try f.write(contents);
+}
+
+const NsEntry = union(enum) {
+    leaf,
+    node: Map,
+
+    pub const Map = std.StringHashMapUnmanaged(NsEntry);
+
+    pub fn deinit(alloc: mem.Allocator, map: *NsEntry.Map) void {
+        var iter = map.iterator();
+        while (iter.next()) |it| {
+            if (it.value_ptr.* == .node) deinit(alloc, &it.value_ptr.node);
+        }
+        map.deinit(alloc);
+    }
+};
+
+fn populateNs(alloc: mem.Allocator, nsmap: *NsEntry.Map, ns: []const u8) !void {
+    // std.debug.print("populateNs() ns={s}\n", .{ns});
+    if (mem.indexOfScalar(u8, ns, '.')) |idx| {
+        const root = ns[0..idx];
+        const rest = ns[idx + 1 ..];
+        const gop = try nsmap.getOrPut(alloc, root);
+        if (gop.found_existing) {
+            if (gop.value_ptr.* != .leaf)
+                try populateNs(alloc, &gop.value_ptr.node, rest)
+            else
+                // nothing to do if this is a leaf
+                std.debug.assert(rest.len == 0);
+        } else {
+            gop.value_ptr.* = .{ .node = .{} };
+            try populateNs(alloc, &gop.value_ptr.node, rest);
+        }
+    } else {
+        std.debug.assert(ns.len != 0);
+        try nsmap.put(alloc, ns, .leaf);
+    }
+}
+
+fn commonNsPrefixLen(a: []const u8, b: []const u8) usize {
+    var iter = mem.split(u8, a, ".");
+    var pos: usize = 0;
+    while (iter.next()) |it| : (pos += it.len + 1) {
+        if (!mem.eql(u8, it, b[pos..][0..it.len])) return pos;
+    }
+    return pos;
+}
+
+const NsTmpArr = std.BoundedArray(u8, std.fs.MAX_NAME_BYTES);
+
+pub fn RepeatedFmt(comptime rep: []const u8, comptime sep: u8) type {
+    return struct {
+        times: usize,
+        pub fn format(value: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+            for (0..value.times) |_| {
+                _ = try writer.write(rep);
+                try writer.writeByte(sep);
+            }
+        }
+    };
+}
+
+fn writeNs(nsmap: NsEntry.Map, writer: anytype, path_buf: *NsTmpArr, typename: []const u8) !void {
+    var iter = nsmap.iterator();
+    while (iter.next()) |it| {
+        const full_name = it.key_ptr.*;
+        if (debug) try writer.print("// writeNs() key={s} tag={s} path_buf={s}\n", .{ full_name, @tagName(it.value_ptr.*), path_buf.constSlice() });
+        const extension = ".fb.zig";
+        const common_prefix_len = commonNsPrefixLen(path_buf.constSlice(), typename);
+
+        switch (it.value_ptr.*) {
+            .leaf => {
+                if (debug) try writer.print(
+                    \\// typename={s} name={s} path_buf={s} common_prefix_len={}
+                    \\
+                , .{ typename, full_name, path_buf.constSlice(), common_prefix_len });
+                if (path_buf.len > 0) {
+                    if (debug) try writer.print(
+                        \\// path_buf.len > 0
+                        \\
+                    , .{});
+                    var buf: [path_buf.buffer.len]u8 = undefined;
+                    for (path_buf.constSlice(), 0..) |c, i| {
+                        buf[i] = if (c == '.') '/' else c;
+                    }
+                    const path = if (common_prefix_len < path_buf.len) buf[common_prefix_len..path_buf.len] else buf[0..0];
+                    const dots = mem.count(u8, path, "/");
+                    try writer.print(
+                        \\pub const {0s} = @import("{3}{1s}{0s}{2s}").{0s};
+                        \\
+                    , .{ full_name, path, extension, RepeatedFmt("..", std.fs.path.sep){ .times = dots } });
+                } else {
+                    const same = mem.eql(u8, full_name, lastName(typename));
+                    if (debug) try writer.print(
+                        \\// path_buf.len == 0
+                        \\// same={}
+                        \\
+                    , .{same});
+                    if (!same) {
+                        const dots = mem.count(u8, typename, ".");
+                        try writer.print(
+                            \\pub const {0s} = @import("{2}{0s}{1s}").{0s};
+                            \\
+                        , .{ full_name, extension, RepeatedFmt("..", std.fs.path.sep){ .times = dots } });
+                    }
+                }
+            },
+            .node => |map| {
+                try writer.print(
+                    \\pub const {0s} = struct {{
+                    \\
+                , .{full_name});
+                const len = path_buf.len;
+                defer path_buf.len = len;
+                try path_buf.appendSlice(full_name);
+                try path_buf.append('.');
+                try writeNs(map, writer, path_buf, typename);
+                _ = try writer.write("\n};\n");
+            },
+        }
+    }
 }
 
 fn genPrelude(
@@ -348,25 +468,26 @@ fn genPrelude(
         \\//! binary:     {s}
         \\//! schema:     {s}.fbs
         \\//! file ident: {?s}
+        \\//! typename    {?s}
         \\//!
         \\
         \\const std = @import("std");
         \\const fb = @import("flatbufferz");
         \\const Builder = fb.Builder;
         \\
-    , .{ bfbs_path, basename, file_ident });
-    var iter = imports.iterator();
-    var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-    while (iter.next()) |it| {
-        const name = it.key_ptr.*;
-        if (mem.eql(u8, name, typename)) continue;
-        const path = try typenameToPath(&buf, "", name, ".fb.zig");
-        const lastname = lastName(name);
-        try writer.print(
-            \\const {0s} = @import("{1s}").{0s};
-            \\
-        , .{ lastname, path });
+        \\
+    , .{ bfbs_path, basename, file_ident, typename });
+    var nsroot = NsEntry.Map{};
+    defer NsEntry.deinit(imports.allocator, &nsroot);
+    {
+        var iter = imports.iterator();
+        while (iter.next()) |it| {
+            const name = it.key_ptr.*;
+            try populateNs(imports.allocator, &nsroot, name);
+        }
     }
+    var arr = NsTmpArr{};
+    try writeNs(nsroot, writer, &arr, typename);
 }
 
 fn hasAttribute(x: anytype, key: []const u8) bool {
@@ -386,10 +507,12 @@ fn isStruct(object_index: i32, schema: Schema) bool {
 fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
-    try writer.print("pub fn pack(rcv: {s}T, b: *Builder) !u32 {{\n", .{struct_type});
+    try writer.print("pub fn pack(rcv: {s}T, __builder: *Builder) !u32 {{\n", .{struct_type});
     {
+        const fields_len = o.FieldsLen();
+        if (fields_len == 0) _ = try writer.write("_ = rcv;\n");
         var i: u32 = 0;
-        while (i < o.FieldsLen()) : (i += 1) {
+        while (i < fields_len) : (i += 1) {
             const field = o.Fields(i).?;
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
@@ -398,7 +521,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             const fname = field.Name();
             if (field_base_ty == .STRING) {
                 try writer.print(
-                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try b.createString(rcv.{0s}) else 0;
+                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try __builder.createString(rcv.{0s}) else 0;
                     \\
                 , .{fname});
             } else if (field_base_ty.isVector() and
@@ -406,7 +529,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 !field_base_ty.isUnion())
             {
                 try writer.print(
-                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try b.createByteString(rcv.{0s}) else 0;
+                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try __builder.createByteString(rcv.{0s}) else 0;
                     \\
                 , .{fname});
             } else if (field_base_ty.isVector()) {
@@ -421,7 +544,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                     try writer.print(
                         \\var {0s}_offsets = make([]u32, {0s}_len);
                         \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try b.createString(rcv.{0s}[j]);
+                        \\off.* = try __builder.createString(rcv.{0s}[j]);
                         \\}}
                         \\
                     , .{fname});
@@ -429,7 +552,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                     try writer.print(
                         \\var {0s}_offsets = make([]u32, {0s}_len);
                         \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try rcv.{0s}[j].pack(b);
+                        \\off.* = try rcv.{0s}[j].pack(__builder);
                         \\}}
                         \\
                     , .{fname});
@@ -437,7 +560,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
 
                 const fname_camel_upper = util.fmtCamelUpper(fname);
                 try writer.print(
-                    \\try {s}.Start{}Vector(b, {2s}_off);
+                    \\try {s}.Start{}Vector(__builder, {2s}_off);
                     \\{{
                     \\var j = {2s}_len - 1;
                     \\while (true) : (j -= 1) {{
@@ -445,18 +568,18 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 , .{ struct_type, fname_camel_upper, fname });
                 if (fty_ele.isScalar()) {
                     try writer.print(
-                        "try b.prepend({s}, rcv.{s}[j]);\n",
+                        "try __builder.prepend({s}, rcv.{s}[j]);\n",
                         .{ zigScalarTypename(fty_ele), fname },
                     );
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
-                    try writer.print("try b.prependUOff({s}_offsets[j]);\n", .{fname});
+                    try writer.print("try __builder.prependUOff({s}_offsets[j]);\n", .{fname});
                 } else {
-                    try writer.print("try rcv.{s}[j].pack(b);\n", .{fname});
+                    try writer.print("try rcv.{s}[j].pack(__builder);\n", .{fname});
                 }
                 try writer.print(
                     \\if (j == 0) break;
                     \\}}
-                    \\{0s}_off = b.endVector({0s}_len);
+                    \\{0s}_off = __builder.endVector({0s}_len);
                     \\}}
                     \\}}
                     \\
@@ -464,19 +587,19 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             } else if (field_base_ty == .STRUCT) {
                 if (isStruct(field_ty.Index(), schema)) continue;
                 try writer.print(
-                    "const {0s}_off = try rcv.{0s}.pack(b);\n",
+                    "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
                     .{fname},
                 );
             } else if (field_base_ty == .UNION) {
                 try writer.print(
-                    "const {0s}_off = try rcv.{0s}.pack(b);\n",
+                    "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
                     .{fname},
                 );
             } else unreachable;
         }
     }
 
-    try writer.print("{s}.Start(b);\n", .{struct_type});
+    try writer.print("{s}.Start(__builder);\n", .{struct_type});
 
     {
         var i: u32 = 0;
@@ -492,7 +615,7 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 if (is_optional) todo("optional", .{});
                 if (field_base_ty != .UNION)
                     try writer.print(
-                        "try {s}.Add{s}(b, rcv.{s});\n",
+                        "try {s}.Add{s}(__builder, rcv.{s});\n",
                         .{ struct_type, fname_camel_upper, fname },
                     );
 
@@ -500,23 +623,23 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             } else {
                 if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        "const {0s}_off = try rcv.{0s}.pack(b);\n",
+                        "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
                         .{fname},
                     );
                 } else if (field_base_ty == .UNION) {
                     try writer.print(
-                        "try {s}.Add{s}T(b, rcv.{s});\n",
+                        "try {s}.Add{s}T(__builder, rcv.{s});\n",
                         .{ struct_type, fname_camel_upper, fname },
                     );
                 }
                 try writer.print(
-                    "{s}.Add{s}(b, {s}_off);\n",
+                    "{s}.Add{s}(__builder, {s}_off);\n",
                     .{ struct_type, fname_camel_upper, fname },
                 );
             }
         }
     }
-    try writer.print("return {s}.End(b);\n}}\n\n", .{struct_type});
+    try writer.print("return {s}.End(__builder);\n}}\n\n", .{struct_type});
 }
 
 fn genNativeTableUnpack(
@@ -529,8 +652,10 @@ fn genNativeTableUnpack(
     const struct_type = lastName(oname);
     try writer.print("pub fn unpackTo(rcv: {s}, t: *{s}T) void {{\n", .{ struct_type, struct_type });
     {
+        const fields_len = o.FieldsLen();
+        if (fields_len == 0) _ = try writer.write("_ = rcv;\n_ = t;\n");
         var i: u32 = 0;
-        while (i < o.FieldsLen()) : (i += 1) {
+        while (i < fields_len) : (i += 1) {
             const field = o.Fields(i).?;
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
@@ -565,6 +690,7 @@ fn genNativeTableUnpack(
                 );
                 try writer.print(
                     \\).initCapacity({0s}_len);
+                    \\{{
                     \\var j: u32 = 0;
                     \\while (j < {0s}_len) : (j += 1) {{
                 , .{fname});
@@ -592,6 +718,7 @@ fn genNativeTableUnpack(
                 }
                 _ = try writer.write(
                     \\);
+                    \\}
                     \\}
                     \\
                 );
@@ -624,8 +751,8 @@ fn genNativeTableUnpack(
 fn genNativeStructPack(o: Object, schema: Schema, writer: anytype) !void {
     const olastname = lastName(o.Name());
     try writer.print(
-        \\pub fn pack(rcv: {0s}, b: *Builder) !void {{
-        \\return {0s}.Create(b
+        \\pub fn pack(rcv: {0s}, __builder: *Builder) !void {{
+        \\return {0s}.Create(__builder
     , .{olastname});
 
     var nameprefix = NamePrefix{};
@@ -751,7 +878,7 @@ fn newRootTypeFromBuffer(o: Object, writer: anytype) !void {
         \\}}
         \\
         \\
-    , .{lastName(o.Name())});
+    , .{o.Name()});
 }
 
 fn initializeExisting(o: Object, writer: anytype) !void {
@@ -791,7 +918,7 @@ fn getVectorLen(o: Object, field: Field, writer: anytype) !void {
     const fname_camel_upper = util.fmtCamelUpper(fname);
     try writer.print(
         \\pub fn {s}Len(rcv: {s}) u32 
-    , .{ fname_camel_upper, o.Name() });
+    , .{ fname_camel_upper, lastName(o.Name()) });
     try offsetPrefix(field, writer);
     _ = try writer.write(
         \\return rcv._tab.vectorLen(o);
@@ -809,7 +936,7 @@ fn getUByteSlice(o: Object, field: Field, writer: anytype) !void {
     const fname_camel_upper = util.fmtCamelUpper(fname);
     try writer.print(
         \\pub fn {s}Bytes(rcv: {s}) []const u8
-    , .{ fname_camel_upper, o.Name() });
+    , .{ fname_camel_upper, lastName(o.Name()) });
     try offsetPrefix(field, writer);
     _ = try writer.write(
         \\return rcv._tab.byteVector(o + rcv._tab.pos);
@@ -848,7 +975,7 @@ fn genGetter(
             try genTypeBasic(
                 ty,
                 schema,
-                .skip_namespace,
+                .keep_namespace,
                 imports,
                 writer,
             );
@@ -934,7 +1061,7 @@ fn genConstant(
 /// Begin the creator function signature.
 fn beginBuilderArgs(_: Object, writer: anytype) !void {
     try writer.print(
-        \\pub fn Create(b: *Builder
+        \\pub fn Create(__builder: *Builder
     , .{});
 }
 
@@ -942,7 +1069,14 @@ const NamePrefix = std.BoundedArray(u8, std.fs.MAX_NAME_BYTES);
 
 /// Recursively generate arguments for a constructor, to deal with nested
 /// structs.
-fn structBuilderArgs(o: Object, nameprefix: *NamePrefix, schema: Schema, writer: anytype) !void {
+fn structBuilderArgs(
+    o: Object,
+    nameprefix: *NamePrefix,
+    alloc: mem.Allocator,
+    arg_names: *std.StringHashMapUnmanaged(void),
+    schema: Schema,
+    writer: anytype,
+) !void {
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
         const field = o.Fields(i).?;
@@ -953,14 +1087,27 @@ fn structBuilderArgs(o: Object, nameprefix: *NamePrefix, schema: Schema, writer:
             // don't clash, and to make it obvious these arguments are constructing
             // a nested struct, prefix the name with the field name.
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const len = nameprefix.len;
+            defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
             try nameprefix.append('_');
-            try structBuilderArgs(o2, nameprefix, schema, writer);
+            try structBuilderArgs(o2, nameprefix, alloc, arg_names, schema, writer);
         } else {
             const fname = field.Name();
+            var argname = std.ArrayList(u8).init(alloc);
+            try argname.appendSlice(nameprefix.constSlice());
+            try argname.appendSlice(fname);
+
+            while (true) {
+                const gop = try arg_names.getOrPut(alloc, argname.items);
+                if (gop.found_existing)
+                    try argname.append('_')
+                else
+                    break;
+            }
             try writer.print(
-                \\, {s}{s}: {s}
-            , .{ nameprefix.constSlice(), fname, zigScalarTypename(field_base_ty) });
+                \\, {s}: {s}
+            , .{ argname.items, zigScalarTypename(field_base_ty) });
         }
     }
 }
@@ -983,7 +1130,7 @@ fn genMethod(
         try genTypeBasic(
             field_ty,
             schema,
-            .skip_namespace,
+            .keep_namespace,
             imports,
             writer,
         );
@@ -1008,7 +1155,7 @@ fn structBuilderBody(
     writer: anytype,
 ) !void {
     try writer.print(
-        \\try b.prep({}, {});
+        \\try __builder.prep({}, {});
         \\
     , .{ o.Minalign(), o.Bytesize() });
     std.debug.assert(o.FieldsLen() != 0);
@@ -1018,22 +1165,24 @@ fn structBuilderBody(
         const padding = field.Padding();
         if (padding != 0)
             try writer.print(
-                \\b.pad({});
+                \\__builder.pad({});
                 \\
             , .{padding});
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
         if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const len = nameprefix.len;
+            defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
             try nameprefix.append('_');
             try structBuilderBody(o2, nameprefix, schema, imports, writer);
         } else {
             if (field_ty.BaseType() == .STRUCT and
                 isStruct(field_ty.Index(), schema))
-                _ = try writer.write("b.prepend")
+                _ = try writer.write("__builder.prepend")
             else
-                _ = try writer.write("try b.prepend");
+                _ = try writer.write("try __builder.prepend");
             try genMethod(field, schema, imports, writer);
             try writer.print(
                 \\ {s}{s});
@@ -1046,7 +1195,7 @@ fn structBuilderBody(
 
 fn endBuilderBody(writer: anytype) !void {
     _ = try writer.write(
-        \\return b.offset();
+        \\return __builder.offset();
         \\}
         \\
     );
@@ -1056,7 +1205,12 @@ fn endBuilderBody(writer: anytype) !void {
 fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
     try beginBuilderArgs(o, writer);
     var nameprefix = NamePrefix{};
-    try structBuilderArgs(o, &nameprefix, schema, writer);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var arg_names = std.StringHashMapUnmanaged(void){};
+    try arg_names.put(alloc, "__builder", {});
+    try structBuilderArgs(o, &nameprefix, alloc, &arg_names, schema, writer);
     try endBuilderArgs(writer);
     nameprefix.len = 0;
     try structBuilderBody(o, &nameprefix, schema, imports, writer);
@@ -1066,8 +1220,8 @@ fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: an
 // Get the value of a table's starting offset.
 fn getStartOfTable(o: Object, writer: anytype) !void {
     try writer.print(
-        \\pub fn Start(b: *Builder) !void {{
-        \\try b.startObject({});
+        \\pub fn Start(__builder: *Builder) !void {{
+        \\try __builder.startObject({});
         \\}}
         \\
     , .{o.FieldsLen()});
@@ -1243,7 +1397,7 @@ fn getStructFieldOfTable(
     // Get the value of a union from an object.
     try writer.print(
         \\pub fn {s}(rcv: {s}) ?
-    , .{ fname_camel_upper, oname });
+    , .{ fname_camel_upper, lastName(oname) });
     try genTypeBasic(field_ty, schema, .keep_namespace, imports, writer);
     try offsetPrefix(field, writer);
     const field_base_ty = field_ty.BaseType();
@@ -1281,7 +1435,7 @@ fn getUnionField(
     // Get the value of a union from an object.
     try writer.print(
         \\pub fn {s}(rcv: {s}) ?fb.Table
-    , .{ fname_camel_upper, oname });
+    , .{ fname_camel_upper, lastName(oname) });
     _ = try writer.write("\n");
     try offsetPrefix(field, writer);
     _ = try writer.write("return ");
@@ -1330,7 +1484,7 @@ fn getMemberOfVectorOfStruct(
     const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
     try writer.print(
         \\pub fn {s}(rcv: {s}, j: usize) ?{s} 
-    , .{ fname_camel_upper, oname, o2.Name() });
+    , .{ fname_camel_upper, lastName(oname), o2.Name() });
     try offsetPrefix(field, writer);
     try writer.print(
         \\  var x = rcv._tab.vector(o);
@@ -1364,7 +1518,7 @@ fn getMemberOfVectorOfNonStruct(
 
     try writer.print(
         \\pub fn {s}(rcv: {s}, j: usize) {s} 
-    , .{ fname_camel_upper, oname, zigScalarTypename(field_ty.Element()) });
+    , .{ fname_camel_upper, lastName(oname), zigScalarTypename(field_ty.Element()) });
 
     _ = try writer.write(" ");
 
@@ -1414,7 +1568,7 @@ fn buildFieldOfTable(
     , .{ fname, field_base_ty });
 
     try writer.print(
-        \\pub fn Add{s}(b: *Builder, {s}: 
+        \\pub fn Add{s}(__builder: *Builder, {s}: 
     , .{ fname_camel_upper, fname });
 
     if (!field_base_ty.isScalar() and !o.IsStruct()) {
@@ -1429,12 +1583,12 @@ fn buildFieldOfTable(
     if (field_base_ty.isStruct() and isStruct(field_ty.Index(), schema))
         _ = try writer.write(
             \\) void {
-            \\b.prepend
+            \\__builder.prepend
         )
     else
         _ = try writer.write(
             \\) !void {
-            \\try b.prepend
+            \\try __builder.prepend
         );
     if (isScalarOptional(field, field_base_ty)) {
         _ = try writer.write("(");
@@ -1449,7 +1603,7 @@ fn buildFieldOfTable(
     if (isScalarOptional(field, field_base_ty)) {
         try writer.print(
             \\)
-            \\b.slot({}
+            \\__builder.slot({}
         , .{offset});
     } else {
         _ = try writer.write(", ");
@@ -1488,8 +1642,8 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
         else => unreachable,
     };
     try writer.print(
-        \\pub fn Start{s}Vector(b: *Builder, num_elems: i32) !u32 {{
-        \\return b.startVector({}, num_elems, {});
+        \\pub fn Start{s}Vector(__builder: *Builder, num_elems: i32) !u32 {{
+        \\return __builder.startVector({}, num_elems, {});
         \\}}
         \\
     , .{ fname_camel_upper, field_ty.ElementSize(), alignment });
@@ -1498,8 +1652,8 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) 
 /// Get the offset of the end of a table.
 fn getEndOffsetOnTable(_: Object, writer: anytype) !void {
     try writer.print(
-        \\pub fn End(b: *Builder) !u32 {{
-        \\return b.endObject();
+        \\pub fn End(__builder: *Builder) !u32 {{
+        \\return __builder.endObject();
         \\}}
         \\
         \\
@@ -1648,7 +1802,7 @@ fn genKeyCompare(o: Object, _: Field, writer: anytype) !void {
         \\}}
         \\
         \\
-    , .{o.Name()});
+    , .{lastName(o.Name())});
 }
 
 fn genLookupByKey(o: Object, _: Field, writer: anytype) !void {
@@ -1659,7 +1813,7 @@ fn genLookupByKey(o: Object, _: Field, writer: anytype) !void {
         \\}}
         \\
         \\
-    , .{o.Name()});
+    , .{lastName(o.Name())});
 }
 
 pub fn generate(
@@ -1697,9 +1851,11 @@ pub fn generate(
         const same_file = decl_file.len == 0 or mem.eql(u8, decl_file, file_ident);
         std.log.debug("same_file={} decl_file={s}", .{ same_file, decl_file });
         if (!same_file) continue;
+
         var enumcode: std.ArrayListUnmanaged(u8) = .{};
         defer enumcode.deinit(alloc);
         const ewriter = enumcode.writer(alloc);
+        imports.clearRetainingCapacity();
         try genEnum(e, schema, &imports, ewriter);
         if (e.IsUnion()) {
             try genNativeUnion(e, schema, &imports, ewriter);
@@ -1707,11 +1863,11 @@ pub fn generate(
             try genNativeUnionUnpack(e, schema, &imports, ewriter);
             _ = try ewriter.write("};\n\n");
         }
-        // enum end
 
         if (opts.@"gen-onefile")
             _ = try owriter.write(enumcode.items)
-        else
+        else {
+            try imports.put(e.Name(), {});
             try saveType(
                 gen_path,
                 bfbs_path,
@@ -1723,6 +1879,7 @@ pub fn generate(
                 imports,
                 .enum_,
             );
+        }
     }
     std.log.debug("schema.ObjectsLen()={}", .{schema.ObjectsLen()});
     for (0..schema.ObjectsLen()) |i| {
@@ -1730,14 +1887,18 @@ pub fn generate(
         const decl_file = o.DeclarationFile();
         const same_file = decl_file.len == 0 or mem.eql(u8, decl_file, file_ident);
         if (!same_file) continue;
-        std.log.info("//writing struct {s} {s}", .{ o.Name(), decl_file });
+
+        std.log.info("writing struct {s} {s}", .{ o.Name(), decl_file });
         var structcode: std.ArrayListUnmanaged(u8) = .{};
         defer structcode.deinit(alloc);
         const swriter = structcode.writer(alloc);
+        imports.clearRetainingCapacity();
         try genStruct(o, schema, !opts.@"no-gen-object-api", &imports, swriter);
+
         if (opts.@"gen-onefile")
             _ = try owriter.write(structcode.items)
-        else
+        else {
+            try imports.put(o.Name(), {});
             try saveType(
                 gen_path,
                 bfbs_path,
@@ -1749,6 +1910,7 @@ pub fn generate(
                 imports,
                 .struct_,
             );
+        }
     }
 
     std.debug.print("{s}\n", .{one_file_code.items});

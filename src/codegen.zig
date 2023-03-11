@@ -384,7 +384,12 @@ const NsTmpArr = std.BoundedArray(u8, std.fs.MAX_NAME_BYTES);
 pub fn RepeatedFmt(comptime rep: []const u8, comptime sep: u8) type {
     return struct {
         times: usize,
-        pub fn format(value: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        pub fn format(
+            value: @This(),
+            comptime _: []const u8,
+            _: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
             for (0..value.times) |_| {
                 _ = try writer.write(rep);
                 try writer.writeByte(sep);
@@ -393,11 +398,20 @@ pub fn RepeatedFmt(comptime rep: []const u8, comptime sep: u8) type {
     };
 }
 
-fn writeNs(nsmap: NsEntry.Map, writer: anytype, path_buf: *NsTmpArr, typename: []const u8) !void {
+fn writeNs(
+    nsmap: NsEntry.Map,
+    writer: anytype,
+    path_buf: *NsTmpArr,
+    typename: []const u8,
+    depth: u8,
+) !void {
     var iter = nsmap.iterator();
     while (iter.next()) |it| {
         const full_name = it.key_ptr.*;
-        if (debug) try writer.print("// writeNs() key={s} tag={s} path_buf={s}\n", .{ full_name, @tagName(it.value_ptr.*), path_buf.constSlice() });
+        if (debug) try writer.print(
+            "// writeNs() key={s} tag={s} path_buf={s}\n",
+            .{ full_name, @tagName(it.value_ptr.*), path_buf.constSlice() },
+        );
         const extension = ".fb.zig";
         const common_prefix_len = commonNsPrefixLen(path_buf.constSlice(), typename);
 
@@ -416,12 +430,17 @@ fn writeNs(nsmap: NsEntry.Map, writer: anytype, path_buf: *NsTmpArr, typename: [
                     for (path_buf.constSlice(), 0..) |c, i| {
                         buf[i] = if (c == '.') '/' else c;
                     }
-                    const path = if (common_prefix_len < path_buf.len) buf[common_prefix_len..path_buf.len] else buf[0..0];
+                    const path = if (common_prefix_len < path_buf.len)
+                        buf[common_prefix_len..path_buf.len]
+                    else
+                        buf[0..0];
                     const dots = mem.count(u8, path, "/");
+                    if (depth != 0) _ = try writer.write("pub ");
+                    const dotsfmt = RepeatedFmt("..", std.fs.path.sep){ .times = dots };
                     try writer.print(
-                        \\pub const {0s} = @import("{3}{1s}{0s}{2s}").{0s};
+                        \\const {0s} = @import("{3}{1s}{0s}{2s}").{0s};
                         \\
-                    , .{ full_name, path, extension, RepeatedFmt("..", std.fs.path.sep){ .times = dots } });
+                    , .{ full_name, path, extension, dotsfmt });
                 } else {
                     const same = mem.eql(u8, full_name, lastName(typename));
                     if (debug) try writer.print(
@@ -431,23 +450,25 @@ fn writeNs(nsmap: NsEntry.Map, writer: anytype, path_buf: *NsTmpArr, typename: [
                     , .{same});
                     if (!same) {
                         const dots = mem.count(u8, typename, ".");
+                        if (depth != 0) _ = try writer.write("pub ");
                         try writer.print(
-                            \\pub const {0s} = @import("{2}{0s}{1s}").{0s};
+                            \\const {0s} = @import("{2}{0s}{1s}").{0s};
                             \\
                         , .{ full_name, extension, RepeatedFmt("..", std.fs.path.sep){ .times = dots } });
                     }
                 }
             },
             .node => |map| {
+                if (depth != 0) _ = try writer.write("pub ");
                 try writer.print(
-                    \\pub const {0s} = struct {{
+                    \\const {0s} = struct {{
                     \\
                 , .{full_name});
                 const len = path_buf.len;
                 defer path_buf.len = len;
                 try path_buf.appendSlice(full_name);
                 try path_buf.append('.');
-                try writeNs(map, writer, path_buf, typename);
+                try writeNs(map, writer, path_buf, typename, depth + 1);
                 _ = try writer.write("\n};\n");
             },
         }
@@ -487,7 +508,7 @@ fn genPrelude(
         }
     }
     var arr = NsTmpArr{};
-    try writeNs(nsroot, writer, &arr, typename);
+    try writeNs(nsroot, writer, &arr, typename, 0);
 }
 
 fn hasAttribute(x: anytype, key: []const u8) bool {
@@ -518,82 +539,85 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
             if (field_base_ty.isScalar()) continue;
-            const fname = field.Name();
+            const fname_orig = field.Name();
+            const fname_off = FmtWithSuffix("_off"){ .name = fname_orig };
             if (field_base_ty == .STRING) {
                 try writer.print(
-                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try __builder.createString(rcv.{0s}) else 0;
+                    \\const {0s} = if (rcv.{1s}.items.len != 0) try __builder.createString(rcv.{1s}) else 0;
                     \\
-                , .{fname});
+                , .{ fname_off, fieldName(fname_orig) });
             } else if (field_base_ty.isVector() and
                 field_ty.Element() == .UCHAR and
                 !field_base_ty.isUnion())
             {
                 try writer.print(
-                    \\const {0s}_off = if (rcv.{0s}.items.len != 0) try __builder.createByteString(rcv.{0s}) else 0;
+                    \\const {0s} = if (rcv.{1s}.items.len != 0) try __builder.createByteString(rcv.{1s}) else 0;
                     \\
-                , .{fname});
+                , .{ fname_off, fieldName(fname_orig) });
             } else if (field_base_ty.isVector()) {
+                const fname_len = FmtWithSuffix("_len"){ .name = fname_orig };
                 try writer.print(
-                    \\var {0s}_off: u32 = 0;
-                    \\if (rcv.{0s}.items.len != 0) {{
-                    \\const {0s}_len = rcv.{0s}.items.len;
+                    \\var {0s}: u32 = 0;
+                    \\if (rcv.{1s}.items.len != 0) {{
+                    \\const {2s} = rcv.{1s}.items.len;
                     \\
-                , .{fname});
+                , .{ fname_off, fieldName(fname_orig), fname_len });
                 const fty_ele = field_ty.Element();
+                const fname_offsets = FmtWithSuffix("_offsets"){ .name = fname_orig };
                 if (fty_ele == .STRING) {
                     try writer.print(
-                        \\var {0s}_offsets = make([]u32, {0s}_len);
-                        \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try __builder.createString(rcv.{0s}[j]);
+                        \\var {0s} = make([]u32, {1s});
+                        \\for ({0s}) |*off, j| {{
+                        \\off.* = try __builder.createString(rcv.{2s}[j]);
                         \\}}
                         \\
-                    , .{fname});
+                    , .{ fname_offsets, fname_len, fieldName(fname_orig) });
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        \\var {0s}_offsets = make([]u32, {0s}_len);
-                        \\for ({0s}_offsets) |*off, j| {{
-                        \\off.* = try rcv.{0s}[j].pack(__builder);
+                        \\var {0s} = make([]u32, {1s});
+                        \\for ({0s}) |*off, j| {{
+                        \\off.* = try rcv.{2s}[j].pack(__builder);
                         \\}}
                         \\
-                    , .{fname});
+                    , .{ fname_offsets, fname_len, fieldName(fname_orig) });
                 }
 
-                const fname_camel_upper = util.fmtCamelUpper(fname);
+                const fname_camel_upper = util.fmtCamelUpper(fname_orig);
                 try writer.print(
-                    \\try {s}.Start{}Vector(__builder, {2s}_off);
+                    \\try {s}.Start{}Vector(__builder, {2s});
                     \\{{
-                    \\var j = {2s}_len - 1;
+                    \\var j = {3s} - 1;
                     \\while (true) : (j -= 1) {{
                     \\
-                , .{ struct_type, fname_camel_upper, fname });
+                , .{ struct_type, fname_camel_upper, fname_off, fname_len });
                 if (fty_ele.isScalar()) {
                     try writer.print(
                         "try __builder.prepend({s}, rcv.{s}[j]);\n",
-                        .{ zigScalarTypename(fty_ele), fname },
+                        .{ zigScalarTypename(fty_ele), fieldName(fname_orig) },
                     );
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
-                    try writer.print("try __builder.prependUOff({s}_offsets[j]);\n", .{fname});
+                    try writer.print("try __builder.prependUOff({s}[j]);\n", .{fname_offsets});
                 } else {
-                    try writer.print("try rcv.{s}[j].pack(__builder);\n", .{fname});
+                    try writer.print("try rcv.{s}[j].pack(__builder);\n", .{fieldName(fname_orig)});
                 }
                 try writer.print(
                     \\if (j == 0) break;
                     \\}}
-                    \\{0s}_off = __builder.endVector({0s}_len);
+                    \\{0s} = __builder.endVector({1s});
                     \\}}
                     \\}}
                     \\
-                , .{fname});
+                , .{ fname_off, fname_len });
             } else if (field_base_ty == .STRUCT) {
                 if (isStruct(field_ty.Index(), schema)) continue;
                 try writer.print(
-                    "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
-                    .{fname},
+                    "const {0s} = try rcv.{1s}.pack(__builder);\n",
+                    .{ fname_off, fieldName(fname_orig) },
                 );
             } else if (field_base_ty == .UNION) {
                 try writer.print(
-                    "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
-                    .{fname},
+                    "const {0s} = try rcv.{1s}.pack(__builder);\n",
+                    .{ fname_off, fieldName(fname_orig) },
                 );
             } else unreachable;
         }
@@ -608,33 +632,34 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
-            const fname = field.Name();
-            const fname_camel_upper = util.fmtCamelUpper(fname);
+            const fname_orig = field.Name();
+            const fname_off = FmtWithSuffix("_off"){ .name = fname_orig };
+            const fname_camel_upper = util.fmtCamelUpper(fname_orig);
             if (field_base_ty.isScalar()) {
                 const is_optional = hasAttribute(field, "optional");
                 if (is_optional) todo("optional", .{});
                 if (field_base_ty != .UNION)
                     try writer.print(
                         "try {s}.Add{s}(__builder, rcv.{s});\n",
-                        .{ struct_type, fname_camel_upper, fname },
+                        .{ struct_type, fname_camel_upper, fieldName(fname_orig) },
                     );
 
                 if (is_optional) todo("optional", .{});
             } else {
                 if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        "const {0s}_off = try rcv.{0s}.pack(__builder);\n",
-                        .{fname},
+                        "const {0s} = try rcv.{1s}.pack(__builder);\n",
+                        .{ fname_off, fieldName(fname_orig) },
                     );
                 } else if (field_base_ty == .UNION) {
                     try writer.print(
                         "try {s}.Add{s}T(__builder, rcv.{s});\n",
-                        .{ struct_type, fname_camel_upper, fname },
+                        .{ struct_type, fname_camel_upper, fieldName(fname_orig) },
                     );
                 }
                 try writer.print(
-                    "{s}.Add{s}(__builder, {s}_off);\n",
-                    .{ struct_type, fname_camel_upper, fname },
+                    "{s}.Add{s}(__builder, {s});\n",
+                    .{ struct_type, fname_camel_upper, fname_off },
                 );
             }
         }
@@ -660,7 +685,7 @@ fn genNativeTableUnpack(
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
-            const fname = field.Name();
+            const fname = fieldName(field.Name());
             const fname_upper_camel = util.fmtCamelUpper(fname);
             if (field_base_ty.isScalar() or field_base_ty == .STRING) {
                 if (field_base_ty.isUnion()) continue;
@@ -725,13 +750,14 @@ fn genNativeTableUnpack(
             } else if (field_base_ty == .STRUCT) {
                 try writer.print("t.{s} = rcv.{s}.unpack();\n", .{ fname, fname });
             } else if (field_base_ty == .UNION) {
+                const fname_table = FmtWithSuffix("_table"){ .name = field.Name() };
                 try writer.print(
-                    \\var {0s}_table = fb.Table{{}};
-                    \\if (rcv.{1s}(&{0s}_table)) {{
-                    \\t.{0s} = rcv.{0s}().unpack({0s}_table); // FIXME can't be right
+                    \\var {2s} = fb.Table{{}};
+                    \\if (rcv.{1s}(&{2s})) {{
+                    \\t.{0s} = rcv.{0s}().unpack({2s}); // FIXME can't be right
                     \\}}
                     \\
-                , .{ fname, fname_upper_camel });
+                , .{ fname, fname_upper_camel, fname_table });
             } else unreachable;
         }
     }
@@ -787,8 +813,8 @@ fn genNativeStructUnpack(o: Object, writer: anytype) !void {
     while (i < o.FieldsLen()) : (i += 1) {
         const field = o.Fields(i).?;
         const field_ty = field.Type().?;
-        const fname = field.Name();
-        const fname_camel_upper = util.fmtCamelUpper(fname);
+        const fname = fieldName(field.Name());
+        const fname_camel_upper = util.fmtCamelUpper(field.Name());
         if (field_ty.BaseType() == .STRUCT)
             try writer.print(
                 "t.{s} = try rcv.{s}(null).unpack();\n",
@@ -826,7 +852,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
         if (field_base_ty.isScalar() and field_base_ty == .UNION) continue;
-        _ = try writer.write(field.Name());
+        _ = try writer.write(fieldName(field.Name()));
         _ = try writer.write(": ");
         if (field_base_ty.isVector()) {
             _ = try writer.write("std.ArrayListUnmanaged(");
@@ -914,8 +940,7 @@ fn genTableAccessor(o: Object, writer: anytype) !void {
 
 /// Get the length of a vector.
 fn getVectorLen(o: Object, field: Field, writer: anytype) !void {
-    const fname = field.Name();
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     try writer.print(
         \\pub fn {s}Len(rcv: {s}) u32 
     , .{ fname_camel_upper, lastName(o.Name()) });
@@ -932,8 +957,7 @@ fn getVectorLen(o: Object, field: Field, writer: anytype) !void {
 
 /// Get a [ubyte] vector as a byte slice.
 fn getUByteSlice(o: Object, field: Field, writer: anytype) !void {
-    const fname = field.Name();
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     try writer.print(
         \\pub fn {s}Bytes(rcv: {s}) []const u8
     , .{ fname_camel_upper, lastName(o.Name()) });
@@ -1093,7 +1117,7 @@ fn structBuilderArgs(
             try nameprefix.append('_');
             try structBuilderArgs(o2, nameprefix, alloc, arg_names, schema, writer);
         } else {
-            const fname = field.Name();
+            const fname = fieldName(field.Name());
             var argname = std.ArrayList(u8).init(alloc);
             try argname.appendSlice(nameprefix.constSlice());
             try argname.appendSlice(fname);
@@ -1265,9 +1289,8 @@ fn getScalarFieldOfStruct(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     try writer.print(
         \\pub fn {s}(rcv: {s}) 
     , .{ fname_camel_upper, lastName(o.Name()) });
@@ -1295,9 +1318,8 @@ fn getScalarFieldOfTable(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     try writer.print(
         \\pub fn {s}(rcv: {s}) 
     , .{ fname_camel_upper, lastName(o.Name()) });
@@ -1337,9 +1359,8 @@ fn getStringField(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
     try writer.print(
         \\pub fn {s}(rcv: {s}) 
@@ -1369,8 +1390,7 @@ fn getStringField(
 /// Get a struct by initializing an existing struct.
 /// Specific to Struct.
 fn getStructFieldOfStruct(o: Object, field: Field, writer: anytype) !void {
-    const fname = field.Name();
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
     try writer.print(
         \\pub fn {0s}(rcv: {1s}) {1s} {{
@@ -1390,9 +1410,8 @@ fn getStructFieldOfTable(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
     // Get the value of a union from an object.
     try writer.print(
@@ -1427,9 +1446,8 @@ fn getUnionField(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
 
     // Get the value of a union from an object.
@@ -1477,9 +1495,8 @@ fn getMemberOfVectorOfStruct(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
     const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
     try writer.print(
@@ -1511,9 +1528,8 @@ fn getMemberOfVectorOfNonStruct(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const oname = o.Name();
 
     try writer.print(
@@ -1548,6 +1564,40 @@ fn getMemberOfVectorOfNonStruct(
     _ = try writer.write("}\n\n");
 }
 
+var field_name_buf: [std.fs.MAX_NAME_BYTES]u8 = undefined;
+fn fieldName(fname: []const u8) []const u8 {
+    if (std.zig.Token.getKeyword(fname) != null or
+        std.zig.primitives.isPrimitive(fname))
+    {
+        mem.copy(u8, &field_name_buf, "@\"");
+        mem.copy(u8, field_name_buf[2..], fname);
+        mem.copy(u8, field_name_buf[2 + fname.len ..], "\"");
+        return field_name_buf[0 .. 3 + fname.len];
+    }
+    return fname;
+}
+
+fn FmtWithSuffix(comptime suffix: []const u8) type {
+    return struct {
+        name: []const u8,
+        pub fn format(value: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+            var buf: [std.fs.MAX_NAME_BYTES]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buf);
+            const bufwriter = fbs.writer();
+            _ = bufwriter.write(value.name) catch return error.OutOfMemory;
+            _ = bufwriter.write(suffix) catch return error.OutOfMemory;
+            const full_name = fbs.getWritten();
+            if (std.zig.Token.getKeyword(full_name) != null or
+                std.zig.primitives.isPrimitive(full_name))
+            {
+                try writer.print(
+                    \\@"{s}"
+                , .{full_name});
+            } else _ = try writer.write(full_name);
+        }
+    };
+}
+
 /// Set the value of a table's field.
 fn buildFieldOfTable(
     o: Object,
@@ -1557,9 +1607,9 @@ fn buildFieldOfTable(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const fname = field.Name();
+    const fname = fieldName(field.Name());
     const field_ty = field.Type().?;
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const field_base_ty = field_ty.BaseType();
 
     if (debug) try writer.print(
@@ -1619,8 +1669,7 @@ fn buildFieldOfTable(
 
 /// Set the value of one of the members of a table's vector.
 fn buildVectorOfTable(_: Object, field: Field, schema: Schema, writer: anytype) !void {
-    const fname = field.Name();
-    const fname_camel_upper = util.fmtCamelUpper(fname);
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
     const alignment = if (ele.isScalar() or ele == .STRING)
@@ -1793,8 +1842,8 @@ fn genStruct(
 }
 
 fn genKeyCompare(o: Object, _: Field, writer: anytype) !void {
-    // const fname = field.Name();
-    // const fname_camel_upper = util.fmtCamelUpper(fname);
+    // const fname = fieldName(field.Name());
+    // const fname_camel_upper = util.fmtCamelUpper(field.Name());
     try writer.print(
         \\pub fn KeyCompare(rcv: {s}) u32 {{
         \\_ = rcv;

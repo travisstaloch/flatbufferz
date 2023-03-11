@@ -86,6 +86,7 @@ pub fn write(comptime T: type, buf: []u8, t: T) void {
             } });
             mem.writeIntLittle(I, buf[0..@sizeOf(T)], @bitCast(I, t));
         },
+        .Bool => mem.writeIntLittle(u8, buf[0..1], @boolToInt(t)),
         .Enum => {
             const Tag = info.Enum.tag_type;
             const taginfo = @typeInfo(Tag);

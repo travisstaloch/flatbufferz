@@ -373,8 +373,11 @@ fn populateNs(alloc: mem.Allocator, nsmap: *NsEntry.Map, ns: []const u8) !void {
 fn commonNsPrefixLen(a: []const u8, b: []const u8) usize {
     var iter = mem.split(u8, a, ".");
     var pos: usize = 0;
-    while (iter.next()) |it| : (pos += it.len + 1) {
+    var mnext = iter.next();
+    while (mnext) |it| : (pos += it.len) {
         if (!mem.eql(u8, it, b[pos..][0..it.len])) return pos;
+        mnext = iter.next();
+        pos += @boolToInt(mnext != null); // don't advance pos past the end of a
     }
     return pos;
 }
@@ -422,10 +425,6 @@ fn writeNs(
                     \\
                 , .{ typename, full_name, path_buf.constSlice(), common_prefix_len });
                 if (path_buf.len > 0) {
-                    if (debug) try writer.print(
-                        \\// path_buf.len > 0
-                        \\
-                    , .{});
                     var buf: [path_buf.buffer.len]u8 = undefined;
                     for (path_buf.constSlice(), 0..) |c, i| {
                         buf[i] = if (c == '.') '/' else c;
@@ -434,7 +433,17 @@ fn writeNs(
                         buf[common_prefix_len..path_buf.len]
                     else
                         buf[0..0];
-                    const dots = mem.count(u8, path, "/");
+
+                    const dots = if (path.len > 0)
+                        mem.count(u8, path, "/")
+                    else
+                        mem.count(u8, typename[common_prefix_len..], ".");
+
+                    if (debug) try writer.print(
+                        \\// path_buf.len={}, dots={}, path={s}
+                        \\
+                    , .{ path_buf.len, dots, path });
+
                     if (depth != 0) _ = try writer.write("pub ");
                     const dotsfmt = RepeatedFmt("..", std.fs.path.sep){ .times = dots };
                     try writer.print(
@@ -551,7 +560,10 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 !field_base_ty.isUnion())
             {
                 try writer.print(
-                    \\const {0s} = if (rcv.{1s}.items.len != 0) try __builder.createByteString(rcv.{1s}) else 0;
+                    \\const {0s} = if (rcv.{1s}.items.len != 0)
+                    \\  try __builder.createByteString(rcv.{1s})
+                    \\else
+                    \\  0;
                     \\
                 , .{ fname_off, fieldName(fname_orig) });
             } else if (field_base_ty.isVector()) {
@@ -566,16 +578,16 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 const fname_offsets = FmtWithSuffix("_offsets"){ .name = fname_orig };
                 if (fty_ele == .STRING) {
                     try writer.print(
-                        \\var {0s} = make([]u32, {1s});
-                        \\for ({0s}) |*off, j| {{
+                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity({1s});
+                        \\for ({0s}.items, 0..) |*off, j| {{
                         \\off.* = try __builder.createString(rcv.{2s}[j]);
                         \\}}
                         \\
                     , .{ fname_offsets, fname_len, fieldName(fname_orig) });
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        \\var {0s} = make([]u32, {1s});
-                        \\for ({0s}) |*off, j| {{
+                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity({1s});
+                        \\for ({0s}.items, 0..) |*off, j| {{
                         \\off.* = try rcv.{2s}[j].pack(__builder);
                         \\}}
                         \\
@@ -1014,7 +1026,7 @@ fn genGetter(
 /// this is the prefix code for that.
 fn offsetPrefix(field: Field, writer: anytype) !void {
     try writer.print(
-        \\{{
+        \\ {{
         \\const o = rcv._tab.offset({});
         \\if (o != 0) {{
         \\
@@ -1032,6 +1044,10 @@ fn genConstant(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
+    if (debug) try writer.print(
+        \\// genConstant() field.Name()={s} field_base_ty={}
+        \\
+    , .{ field.Name(), field_base_ty });
     if (isScalarOptional(field, field_base_ty)) {
         _ = try writer.write("null");
         return;
@@ -1044,21 +1060,30 @@ fn genConstant(
                 false;
             try writer.print("{}", .{default});
         },
-        .FLOAT, .DOUBLE => {
-            // if (StringIsFlatbufferNan(field.value.constant)) {
-            //   needs_math_import_ = true;
-            //   return float_type + "(math.NaN())";
-            // } else if (StringIsFlatbufferPositiveInfinity(field.value.constant)) {
-            //   needs_math_import_ = true;
-            //   return float_type + "(math.Inf(1))";
-            // } else if (StringIsFlatbufferNegativeInfinity(field.value.constant)) {
-            //   needs_math_import_ = true;
-            //   return float_type + "(math.Inf(-1))";
-            // }
-            // return field.value.constant;
-            try writer.print("{}", .{field.DefaultReal()});
+        .FLOAT => {
+            const default_real = field.DefaultReal();
+            if (std.math.isNan(default_real))
+                _ = try writer.write("std.math.nan(f32)")
+            else if (std.math.isInf(default_real))
+                _ = try writer.write("std.math.inf(f32)")
+            else if (std.math.isNegativeInf(default_real))
+                _ = try writer.write("-std.math.inf(f32)")
+            else
+                _ = try writer.print("{}", .{default_real});
         },
-        .STRUCT, .VECTOR => _ = try writer.write("0"), // NOTE: not sure about these values, just copied go ouptut
+        .DOUBLE => {
+            const default_real = field.DefaultReal();
+            if (std.math.isNan(default_real))
+                _ = try writer.write("std.math.nan(f64)")
+            else if (std.math.isInf(default_real))
+                _ = try writer.write("std.math.inf(f64)")
+            else if (std.math.isNegativeInf(default_real))
+                _ = try writer.write("-std.math.inf(f64)")
+            else
+                _ = try writer.print("{}", .{default_real});
+        },
+        // FIXME: ? not sure about these values, just copied go ouptut
+        .STRUCT, .VECTOR => _ = try writer.write("0"),
         else => {
             const field_ty = field.Type().?;
             if (field_ty.Index() == -1)
@@ -1098,6 +1123,7 @@ fn structBuilderArgs(
     nameprefix: *NamePrefix,
     alloc: mem.Allocator,
     arg_names: *std.StringHashMapUnmanaged(void),
+    imports: *TypenameSet,
     schema: Schema,
     writer: anytype,
 ) !void {
@@ -1115,7 +1141,15 @@ fn structBuilderArgs(
             defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
             try nameprefix.append('_');
-            try structBuilderArgs(o2, nameprefix, alloc, arg_names, schema, writer);
+            try structBuilderArgs(
+                o2,
+                nameprefix,
+                alloc,
+                arg_names,
+                imports,
+                schema,
+                writer,
+            );
         } else {
             const fname = fieldName(field.Name());
             var argname = std.ArrayList(u8).init(alloc);
@@ -1130,8 +1164,11 @@ fn structBuilderArgs(
                     break;
             }
             try writer.print(
-                \\, {s}: {s}
-            , .{ argname.items, zigScalarTypename(field_base_ty) });
+                \\, {s}: 
+            , .{
+                argname.items,
+            });
+            try genTypeBasic(field_ty, schema, .keep_namespace, imports, writer);
         }
     }
 }
@@ -1234,7 +1271,7 @@ fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: an
     const alloc = arena.allocator();
     var arg_names = std.StringHashMapUnmanaged(void){};
     try arg_names.put(alloc, "__builder", {});
-    try structBuilderArgs(o, &nameprefix, alloc, &arg_names, schema, writer);
+    try structBuilderArgs(o, &nameprefix, alloc, &arg_names, imports, schema, writer);
     try endBuilderArgs(writer);
     nameprefix.len = 0;
     try structBuilderBody(o, &nameprefix, schema, imports, writer);

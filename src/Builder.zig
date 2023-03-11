@@ -45,8 +45,7 @@ pub const size_f32 = @sizeOf(f32);
 pub const size_f64 = @sizeOf(f64);
 pub const size_bool = @sizeOf(bool);
 
-/// initializes a Builder of size `size`.
-/// The internal buffer is grown as needed.
+/// initializes an empty Builder
 pub fn init(alloc: mem.Allocator) Builder {
     return .{
         .alloc = alloc,
@@ -56,6 +55,14 @@ pub fn init(alloc: mem.Allocator) Builder {
         .nested = false,
         .finished = false,
     };
+}
+
+/// deinit `shared_strings`, `vtable`, `vtables`.
+/// does not deinit `bytes`.
+pub fn deinit(b: *Builder) void {
+    b.shared_strings.deinit(b.alloc);
+    b.vtable.deinit(b.alloc);
+    b.vtables.deinit(b.alloc);
 }
 
 fn debug(b: Builder, comptime fmt: []const u8, args: anytype) void {

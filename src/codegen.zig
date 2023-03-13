@@ -277,10 +277,13 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
     const ename = e.Name();
     const last_name = lastName(ename);
     try writer.print(
-        "pub fn unpack(rcv: {s}, table: fb.Table) {s}T {{\n",
+        \\pub fn unpack(rcv: {s}, table: fb.Table, __pack_opts: fb.common.PackOptions) {s}T {{
+        \\_ = .{{__pack_opts}};
+        \\  switch (rcv) {{
+        \\
+    ,
         .{ last_name, last_name },
     );
-    _ = try writer.write("  switch (rcv) {\n");
     var i: u32 = 0;
     while (i < e.ValuesLen()) : (i += 1) {
         const ev = e.Values(i).?;
@@ -292,7 +295,7 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
             const fty_fmt = TypeFmt.init(ev.UnionType().?, schema, .keep_ns, imports);
             try writer.print(
                 \\var x = {}.init(table.bytes, table.pos);
-                \\return .{{ .{s} = x.unpack() }};
+                \\return .{{ .{s} = x.unpack(__pack_opts) }};
                 \\}},
                 \\
             , .{ fty_fmt, ev.Name() });
@@ -578,7 +581,11 @@ fn isStruct(object_index: i32, schema: Schema) bool {
 fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
-    try writer.print("pub fn pack(rcv: {s}T, __builder: *Builder) !u32 {{\n", .{struct_type});
+    try writer.print(
+        \\pub fn pack(rcv: {s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) !u32 {{
+        \\_ = .{{__pack_opts}};
+        \\
+    , .{struct_type});
     {
         const fields_len = o.FieldsLen();
         if (fields_len == 0) _ = try writer.write("_ = rcv;\n");
@@ -619,7 +626,8 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                 const fname_offsets = FmtWithSuffix("_offsets"){ .name = fname_orig };
                 if (fty_ele == .STRING) {
                     try writer.print(
-                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity({1s});
+                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity(__pack_opts.allocator.?, {1s});
+                        \\defer {0s}.deinit();
                         \\for ({0s}.items, 0..) |*off, j| {{
                         \\off.* = try __builder.createString(rcv.{2s}[j]);
                         \\}}
@@ -627,7 +635,8 @@ fn genNativeTablePack(o: Object, schema: Schema, writer: anytype) !void {
                     , .{ fname_offsets, fname_len, fieldName(fname_orig) });
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
-                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity({1s});
+                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity(__pack_opts.allocator.?, {1s});
+                        \\defer {0s}.deinit();
                         \\for ({0s}.items, 0..) |*off, j| {{
                         \\off.* = try rcv.{2s}[j].pack(__builder);
                         \\}}
@@ -728,7 +737,13 @@ fn genNativeTableUnpack(
 ) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
-    try writer.print("pub fn unpackTo(rcv: {s}, t: *{s}T) !void {{\n", .{ struct_type, struct_type },);
+    try writer.print(
+        \\pub fn unpackTo(rcv: {s}, t: *{s}T, __pack_opts: fb.common.PackOptions) !void {{
+        \\_ = .{{__pack_opts}};
+        \\
+    ,
+        .{ struct_type, struct_type },
+    );
     {
         const fields_len = o.FieldsLen();
         if (fields_len == 0) _ = try writer.write("_ = rcv;\n_ = t;\n");
@@ -772,27 +787,36 @@ fn genNativeTableUnpack(
                     .{ fname, fname_upper_camel },
                 );
             } else if (field_base_ty == .VECTOR) {
-                try writer.print(
-                    \\const {0s}_len = rcv.{1s}Len();
-                    \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity({0s}_len);
-                    \\{{
-                    \\var j: u32 = 0;
-                    \\while (j < {0s}_len) : (j += 1) {{
-                , .{ fname, fname_upper_camel, fty_fmt });
-
-                if (field_ty.Element() == .STRUCT) {
+                const fname_len = FmtWithSuffix("_len"){ .name = field.Name() };
+                const ele = field_ty.Element();
+                if (ele == .STRUCT)
                     try writer.print(
-                        \\var x = {}{{}};
-                        \\rcv.{s}(&x, j);
-                    , .{ fty_fmt, fname_upper_camel });
-                }
+                        \\const {3} = rcv.{1s}Len();
+                        \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, {3});
+                        \\{{
+                        \\var j: u32 = 0;
+                        \\while (j < {3}) : (j += 1) {{
+                        \\const x = rcv.{1}(j).?;
+                        \\
+                        \\
+                    , .{ fname, fname_upper_camel, fty_fmt, fname_len })
+                else
+                    try writer.print(
+                        \\const {3} = rcv.{1s}Len();
+                        \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity(__pack_opts.allocator.?, {3});
+                        \\{{
+                        \\var j: u32 = 0;
+                        \\while (j < {3}) : (j += 1) {{
+                        \\
+                    , .{ fname, fname_upper_camel, fty_fmt, fname_len });
+
                 try writer.print("t.{s}.appendAssumeCapacity(", .{fname});
                 if (field_ty.Element().isScalar()) {
                     try writer.print("rcv.{s}(j)", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRING) {
                     try writer.print("rcv.{s}(j)", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRUCT) {
-                    _ = try writer.write("x.unpack()");
+                    try writer.print("try {}T.unpack(x, __pack_opts)", .{fty_fmt});
                 } else {
                     // TODO(iceboy): Support vector of unions.
                     unreachable;
@@ -805,15 +829,17 @@ fn genNativeTableUnpack(
                 );
             } else if (field_base_ty == .STRUCT) {
                 try writer.print(
-                    \\if(rcv.{s}()) |x| 
-                    \\try {}T.unpackTo(x, t.{s}.?);
+                    \\if (rcv.{0}()) |x| {{
+                    \\if (t.{2s} == null) t.{2s} = try __pack_opts.allocator.?.create({1}T);
+                    \\try {1}T.unpackTo(x, t.{2s}.?, __pack_opts);
+                    \\}}
                     \\
                 , .{ fname_upper_camel, fty_fmt, fname });
             } else if (field_base_ty == .UNION) {
                 try writer.print(
                     \\// unpack union
                     \\// if (rcv.{1s}()) |_tab| {{
-                    \\// t.{0s} = try {1s}T.unpack(rcv, _tab); // FIXME can't be right
+                    \\// t.{0s} = try {1s}T.unpack(rcv, _tab, __pack_opts); // FIXME can't be right
                     \\// }}
                     \\
                 , .{ fname, fname_upper_camel });
@@ -823,9 +849,9 @@ fn genNativeTableUnpack(
 
     _ = try writer.write("}\n\n");
     try writer.print(
-        \\pub fn unpack(rcv: {0s}) fb.common.UnpackError!{0s}T {{
+        \\pub fn unpack(rcv: {0s}, __pack_opts: fb.common.PackOptions) fb.common.PackError!{0s}T {{
         \\var t = {0s}T{{}};
-        \\try {0s}T.unpackTo(rcv, &t);
+        \\try {0s}T.unpackTo(rcv, &t, __pack_opts);
         \\return t;
         \\}}
         \\
@@ -866,7 +892,9 @@ fn structPackArgs(o: Object, nameprefix: *NamePrefix, schema: Schema, writer: an
 fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
     const olastname = lastName(o.Name());
     try writer.print(
-        \\pub fn unpackTo(rcv: {0s}, t: *{0s}T) !void {{
+        \\pub fn unpackTo(rcv: {0s}, t: *{0s}T, __pack_opts: fb.common.PackOptions) !void {{
+        \\_ = .{{__pack_opts}};
+        \\
     , .{olastname});
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
@@ -878,8 +906,8 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
         if (field_ty.BaseType() == .STRUCT) {
             const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
             try writer.print(
-                \\if (t.{0s} == null)
-                \\t.{0s} = try {1}T.unpack(rcv.{2}());
+                \\if (t.{0s} == null) {{ t.{0s} = try __pack_opts.allocator.?.create({1}T); }}
+                \\t.{0s}.?.* = try {1}T.unpack(rcv.{2}(), __pack_opts);
                 \\
             , .{ fname, fty_fmt, fname_camel_upper });
         } else try writer.print(
@@ -891,9 +919,9 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
     try writer.print(
         \\}}
         \\
-        \\pub fn unpack(rcv: {0s}) !{0s}T {{
+        \\pub fn unpack(rcv: {0s}, __pack_opts: fb.common.PackOptions) !{0s}T {{
         \\var t = {0s}T{{}};
-        \\try {0s}T.unpackTo(rcv, &t);
+        \\try {0s}T.unpackTo(rcv, &t, __pack_opts);
         \\return t;
         \\}}
         \\
@@ -920,8 +948,9 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         _ = try writer.write(": ");
         const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
         if (field_base_ty.isVector()) {
+            const ele = field_ty.Element();
             try writer.print("std.ArrayListUnmanaged({}", .{fty_fmt});
-            if (field_base_ty == .STRUCT) _ = try writer.write("T");
+            if (ele == .STRUCT) _ = try writer.write("T");
             _ = try writer.write(") = .{}");
         } else {
             // gen field type
@@ -1167,13 +1196,6 @@ fn genConstant(
     }
 }
 
-/// Begin the creator function signature.
-fn beginBuilderArgs(_: Object, writer: anytype) !void {
-    try writer.print(
-        \\pub fn Create(__builder: *Builder
-    , .{});
-}
-
 const NamePrefix = std.BoundedArray(u8, std.fs.MAX_NAME_BYTES);
 
 /// Recursively generate arguments for a constructor, to deal with nested
@@ -1233,11 +1255,6 @@ fn structBuilderArgs(
     }
 }
 
-/// End the creator function signature.
-fn endBuilderArgs(writer: anytype) !void {
-    _ = try writer.write(") !u32 {\n");
-}
-
 /// Writes the method name for use with add/put calls.
 fn genMethod(
     field: Field,
@@ -1275,11 +1292,14 @@ fn structBuilderBody(
         \\try __builder.prep({}, {});
         \\
     , .{ o.Minalign(), o.Bytesize() });
-    std.debug.assert(o.FieldsLen() != 0);
-    var i = o.FieldsLen() - 1;
-    while (true) : (i -= 1) {
-        const field = o.Fields(i).?;
+    var i = @bitCast(i32, o.FieldsLen()) - 1;
+    while (i >= 0) : (i -= 1) {
+        const field = o.Fields(@bitCast(u32, i)).?;
         const padding = field.Padding();
+        if (debug) try writer.print(
+            \\// {s}.{s}: padding={} id={}
+            \\
+        , .{ lastName(o.Name()), field.Name(), padding, field.Id() });
         if (padding != 0)
             try writer.print(
                 \\__builder.pad({});
@@ -1295,32 +1315,21 @@ fn structBuilderBody(
             try nameprefix.append('_');
             try structBuilderBody(o2, nameprefix, schema, imports, writer);
         } else {
-            if (field_ty.BaseType() == .STRUCT and
-                isStruct(field_ty.Index(), schema))
-                _ = try writer.write("__builder.prepend")
-            else
-                _ = try writer.write("try __builder.prepend");
+            _ = try writer.write("try __builder.prepend");
             try genMethod(field, schema, imports, writer);
             try writer.print(
                 \\ {s}{s});
                 \\
             , .{ nameprefix.constSlice(), field.Name() });
         }
-        if (i == 0) break;
     }
-}
-
-fn endBuilderBody(writer: anytype) !void {
-    _ = try writer.write(
-        \\return __builder.offset();
-        \\}
-        \\
-    );
 }
 
 /// Create a struct with a builder and the struct's arguments.
 fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
-    try beginBuilderArgs(o, writer);
+    _ = try writer.write(
+        \\pub fn Create(__builder: *Builder
+    );
     var nameprefix = NamePrefix{};
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1328,10 +1337,14 @@ fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: an
     var arg_names = std.StringHashMapUnmanaged(void){};
     try arg_names.put(alloc, "__builder", {});
     try structBuilderArgs(o, &nameprefix, alloc, &arg_names, imports, schema, writer);
-    try endBuilderArgs(writer);
+    _ = try writer.write(") !u32 {\n");
     nameprefix.len = 0;
     try structBuilderBody(o, &nameprefix, schema, imports, writer);
-    try endBuilderBody(writer);
+    _ = try writer.write(
+        \\return __builder.offset();
+        \\}
+        \\
+    );
 }
 
 // Get the value of a table's starting offset.

@@ -1,6 +1,11 @@
 const std = @import("std");
 
-pub const UnpackError = error{};
+pub const PackError = error{} ||
+    std.mem.Allocator.Error;
+
+pub const PackOptions = struct {
+    allocator: ?std.mem.Allocator = null,
+};
 
 pub fn todo(comptime fmt: []const u8, args: anytype) noreturn {
     std.debug.panic("TODO " ++ fmt, args);

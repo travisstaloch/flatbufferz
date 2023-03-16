@@ -3,6 +3,7 @@ const mem = std.mem;
 const fb = @import("flatbufferz");
 const clap = @import("zig-clap");
 const util = fb.util;
+const build_options = @import("build_options");
 
 pub const std_options = struct {
     pub const log_level = std.meta.stringToEnum(
@@ -55,7 +56,7 @@ pub fn main() !void {
         // setup a flatc command args used to gen .bfbs from .fbs args
         var argv = std.ArrayList([]const u8).init(alloc);
         try argv.appendSlice(&.{
-            "flatc",
+            build_options.flatc_exe,
             "-b",
             "--schema",
             "--bfbs-comments",

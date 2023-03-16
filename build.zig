@@ -99,4 +99,34 @@ pub fn build(b: *std.Build) !void {
         const sample_run_step = b.step("run-sample", "Run the app");
         sample_run_step.dependOn(&sample_run_cmd.step);
     }
+
+    const gflatbuffers_dir = b.pathJoin(&.{ "src", "deps", "google-flatbuffers" });
+    const gflatbuffers_dir_build = b.pathJoin(&.{ gflatbuffers_dir, "build" });
+    try std.fs.cwd().makePath(gflatbuffers_dir_build);
+    build_options.addOption([]const u8, "flatc_exe", b.pathJoin(
+        &.{ gflatbuffers_dir_build, "flatc" },
+    ));
+
+    const flatbuffers_cmake = b.addSystemCommand(&.{
+        "cmake",
+        "FLATBUFFERS_BUILD_FLATC=on",
+        "FLATBUFFERS_BUILD_FLATLIB=off",
+        "FLATBUFFERS_BUILD_TESTS=off",
+        "FLATBUFFERS_BUILD_FLATHASH=off",
+        "FLATBUFFERS_SKIP_MONSTER_EXTRA=on",
+        "FLATBUFFERS_STRICT_MODE=on",
+        "..",
+    });
+    flatbuffers_cmake.cwd = gflatbuffers_dir_build;
+    flatbuffers_cmake.stdout_action = .ignore;
+    exe.step.dependOn(&flatbuffers_cmake.step);
+
+    const flatbuffers_cmake_build = b.addSystemCommand(&.{
+        "cmake",
+        "--build",
+        ".",
+    });
+    flatbuffers_cmake_build.cwd = gflatbuffers_dir_build;
+    flatbuffers_cmake_build.stdout_action = .ignore;
+    exe.step.dependOn(&flatbuffers_cmake_build.step);
 }

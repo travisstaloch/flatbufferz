@@ -109,12 +109,12 @@ pub fn build(b: *std.Build) !void {
 
     const flatbuffers_cmake = b.addSystemCommand(&.{
         "cmake",
-        "FLATBUFFERS_BUILD_FLATC=on",
-        "FLATBUFFERS_BUILD_FLATLIB=off",
-        "FLATBUFFERS_BUILD_TESTS=off",
-        "FLATBUFFERS_BUILD_FLATHASH=off",
-        "FLATBUFFERS_SKIP_MONSTER_EXTRA=on",
-        "FLATBUFFERS_STRICT_MODE=on",
+        "-DFLATBUFFERS_BUILD_FLATC=on",
+        "-DFLATBUFFERS_BUILD_FLATLIB=off",
+        "-DFLATBUFFERS_BUILD_TESTS=off",
+        "-DFLATBUFFERS_BUILD_FLATHASH=off",
+        "-DFLATBUFFERS_SKIP_MONSTER_EXTRA=on",
+        "-DFLATBUFFERS_STRICT_MODE=on",
         "..",
     });
     flatbuffers_cmake.cwd = gflatbuffers_dir_build;

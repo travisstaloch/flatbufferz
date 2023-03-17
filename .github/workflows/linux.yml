@@ -14,12 +14,12 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
-#      with:
-#        submodules: recursive
-#        fetch-depth: 0
+      with:
+        submodules: recursive
+        # fetch-depth: 0
 
-    - name: Install flatc
-      run: sudo apt-get install -y flatbuffers-compiler
+#    - name: Install flatc
+#      run: sudo apt-get install -y flatbuffers-compiler
 
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.3.0

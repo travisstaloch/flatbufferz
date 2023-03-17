@@ -60,7 +60,7 @@ pub const scalar_sizes = blk: {
             .ULONG => 8,
             .FLOAT => 4,
             .DOUBLE => 8,
-            .STRING => 16,
+            .STRING => 4, // defined as sizeof(Offset<void>) (== 4) in idl_gen_go.cpp
             else => null,
         };
     }
@@ -812,9 +812,9 @@ fn genNativeTableUnpack(
 
                 try writer.print("t.{s}.appendAssumeCapacity(", .{fname});
                 if (field_ty.Element().isScalar()) {
-                    try writer.print("rcv.{s}(j)", .{fname_upper_camel});
+                    try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRING) {
-                    try writer.print("rcv.{s}(j)", .{fname_upper_camel});
+                    try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
                 } else if (field_ty.Element() == .STRUCT) {
                     try writer.print("try {}T.unpack(x, __pack_opts)", .{fty_fmt});
                 } else {
@@ -830,7 +830,10 @@ fn genNativeTableUnpack(
             } else if (field_base_ty == .STRUCT) {
                 try writer.print(
                     \\if (rcv.{0}()) |x| {{
-                    \\if (t.{2s} == null) t.{2s} = try __pack_opts.allocator.?.create({1}T);
+                    \\if (t.{2s} == null) {{
+                    \\t.{2s} = try __pack_opts.allocator.?.create({1}T);
+                    \\t.{2s}.?.* = .{{}};
+                    \\}}
                     \\try {1}T.unpackTo(x, t.{2s}.?, __pack_opts);
                     \\}}
                     \\
@@ -906,7 +909,10 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
         if (field_ty.BaseType() == .STRUCT) {
             const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
             try writer.print(
-                \\if (t.{0s} == null) {{ t.{0s} = try __pack_opts.allocator.?.create({1}T); }}
+                \\if (t.{0s} == null) {{ 
+                \\t.{0s} = try __pack_opts.allocator.?.create({1}T);
+                \\t.{0s}.?.* = .{{}};
+                \\}}
                 \\t.{0s}.?.* = try {1}T.unpack(rcv.{2}(), __pack_opts);
                 \\
             , .{ fname, fty_fmt, fname_camel_upper });
@@ -927,6 +933,67 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
         \\
         \\
     , .{olastname});
+}
+
+fn genNativeDeinit(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+    _ = imports;
+    _ = schema;
+    try writer.print(
+        \\pub fn deinit(self: *{s}T, allocator: std.mem.Allocator) void {{
+        \\_ = .{{self, allocator}}; 
+        \\
+    , .{lastName(o.Name())});
+    var i: u32 = 0;
+    while (i < o.FieldsLen()) : (i += 1) {
+        const field = o.Fields(i).?;
+        const field_ty = field.Type().?;
+        const field_base_ty = field_ty.BaseType();
+        const fname = fieldName(field.Name());
+
+        switch (field_base_ty) {
+            .STRING => {
+                try writer.print(
+                    \\allocator.free(self.{s});
+                    \\
+                , .{fname});
+            },
+            .STRUCT => {
+                try writer.print(
+                    \\if (self.{0s}) |x| {{
+                    \\x.deinit(allocator);
+                    \\allocator.destroy(x);
+                    \\}}
+                    \\
+                , .{fname});
+            },
+            .VECTOR => {
+                const ele = field_ty.Element();
+                if (ele == .STRING)
+                    try writer.print(
+                        \\for (self.{0s}.items) |it| {{
+                        \\_ = it;
+                        \\//allocator.free(it);
+                        \\}}
+                        \\
+                    , .{fname})
+                else if (!ele.isScalar())
+                    try writer.print(
+                        \\for (self.{0s}.items) |*it| it.deinit(allocator);
+                        \\
+                    , .{fname});
+
+                try writer.print(
+                    \\self.{0s}.deinit(allocator);
+                    \\
+                , .{fname});
+            },
+            else => {},
+        }
+    }
+    _ = try writer.write(
+        \\}
+        \\
+    );
 }
 
 fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
@@ -988,6 +1055,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         try genNativeStructPack(o, schema, writer);
         try genNativeStructUnpack(o, schema, imports, writer);
     }
+    try genNativeDeinit(o, schema, imports, writer);
     _ = try writer.write("};\n\n");
 }
 
@@ -1093,6 +1161,7 @@ fn genGetter(
             .STRING => _ = try writer.write("rcv._tab.byteVector("),
             .UNION => _ = try writer.write("rcv._tab.union_("),
             .VECTOR => todo(".VECTOR .VECTOR", .{}),
+            .STRUCT => todo(".VECTOR .STRUCT", .{}),
             else => |ele| {
                 _ = try writer.write("rcv._tab.read(");
                 if (ele.isScalar() or ele == .STRING) {
@@ -1209,8 +1278,12 @@ fn structBuilderArgs(
     schema: Schema,
     writer: anytype,
 ) !void {
-    var i: u32 = 0;
-    while (i < o.FieldsLen()) : (i += 1) {
+    const field_ids = try getFieldIds(imports.allocator, o);
+    defer field_ids.deinit();
+
+    var ii: u32 = 0;
+    while (ii < field_ids.items.len) : (ii += 1) {
+        const i = mem.indexOfScalar(u32, field_ids.items, @bitCast(u32, ii)).?;
         const field = o.Fields(i).?;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
@@ -1279,6 +1352,18 @@ fn genMethod(
         "UOff(");
 }
 
+fn getFieldIds(allocator: mem.Allocator, o: Object) !std.ArrayList(u32) {
+    var field_ids = std.ArrayList(u32).init(allocator);
+    {
+        var i: u32 = 0;
+        while (i < o.FieldsLen()) : (i += 1) {
+            const f = o.Fields(i).?;
+            try field_ids.append(f.Id());
+        }
+    }
+    return field_ids;
+}
+
 /// Recursively generate struct construction statements and instert manual
 /// padding.
 fn structBuilderBody(
@@ -1292,9 +1377,16 @@ fn structBuilderBody(
         \\try __builder.prep({}, {});
         \\
     , .{ o.Minalign(), o.Bytesize() });
-    var i = @bitCast(i32, o.FieldsLen()) - 1;
-    while (i >= 0) : (i -= 1) {
-        const field = o.Fields(@bitCast(u32, i)).?;
+    // field_ids makes it possible to visit fields in declaration order instead of
+    // alphabetic order
+    // FIXME: this is very slow. optimize
+    const field_ids = try getFieldIds(imports.allocator, o);
+    defer field_ids.deinit();
+
+    var ii = @intCast(i32, field_ids.items.len) - 1;
+    while (ii >= 0) : (ii -= 1) {
+        const i = mem.indexOfScalar(u32, field_ids.items, @bitCast(u32, ii)).?;
+        const field = o.Fields(@intCast(u32, i)).?;
         const padding = field.Padding();
         if (debug) try writer.print(
             \\// {s}.{s}: padding={} id={}
@@ -1601,18 +1693,29 @@ fn getMemberOfVectorOfStruct(
     , .{ fname_camel_upper, lastName(oname), o2.Name() });
     try offsetPrefix(field, writer);
     const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
-    try writer.print(
-        \\  var x = rcv._tab.vector(o);
-        \\  x += @intCast(u32, j) * {};
-        \\  x = rcv._tab.indirect(x);
-        \\  return {}
-        \\.init(rcv._tab.bytes, x);
-        \\}}
-        \\return null;
-        \\}}
-        \\
-        \\
-    , .{ inlineSize(field_ty, schema), fty_fmt });
+    if (!o2.IsStruct())
+        try writer.print(
+            \\  var x = rcv._tab.vector(o);
+            \\  x += @intCast(u32, j) * {};
+            \\  x = rcv._tab.indirect(x);
+            \\  return {}.init(rcv._tab.bytes, x);
+            \\}}
+            \\return null;
+            \\}}
+            \\
+            \\
+        , .{ inlineSize(field_ty, schema), fty_fmt })
+    else
+        try writer.print(
+            \\  var x = rcv._tab.vector(o);
+            \\  x += @intCast(u32, j) * {};
+            \\  return {}.init(rcv._tab.bytes, x);
+            \\}}
+            \\return null;
+            \\}}
+            \\
+            \\
+        , .{ inlineSize(field_ty, schema), fty_fmt });
 }
 
 /// Get the value of a vector's non-struct member.
@@ -1628,8 +1731,12 @@ fn getMemberOfVectorOfNonStruct(
     const oname = o.Name();
 
     try writer.print(
-        \\pub fn {s}(rcv: {s}, j: usize) {s} 
-    , .{ fname_camel_upper, lastName(oname), zigScalarTypename(field_ty.Element()) });
+        \\pub fn {s}(rcv: {s}, j: usize) ?{s} 
+    , .{
+        fname_camel_upper,
+        lastName(oname),
+        TypeFmt.init(field_ty, schema, .keep_ns, imports),
+    });
 
     _ = try writer.write(" ");
 
@@ -1640,17 +1747,28 @@ fn getMemberOfVectorOfNonStruct(
     );
 
     try genGetter(field_ty, schema, imports, writer);
-    try writer.print(
-        \\a + @intCast(u32, j) * {});
-        \\}}
-        \\
-    , .{inlineSize(field_ty, schema)});
+    if (field_ty.BaseType() == .VECTOR and field_ty.Element() == .STRUCT and
+        isStruct(field_ty.Index(), schema))
+        try writer.print(
+            \\rcv._tab.bytes, a + @intCast(u32, j) * {});
+            \\}}
+            \\
+        , .{inlineSize(field_ty, schema)})
+    else
+        try writer.print(
+            \\a + @intCast(u32, j) * {});
+            \\}}
+            \\
+        , .{inlineSize(field_ty, schema)});
     const ele_basety = field_ty.Element();
     _ = try writer.write(if (ele_basety == .STRING)
         \\return "";
         \\
     else if (ele_basety == .BOOL)
         \\return false;
+        \\
+    else if (field_ty.BaseType() == .VECTOR and field_ty.Element() == .STRUCT)
+        \\return null;
         \\
     else
         \\return 0;

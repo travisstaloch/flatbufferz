@@ -10,7 +10,7 @@ const size_u32 = Builder.size_u32;
 const Table = @This();
 
 bytes: []const u8,
-pos: u32, // Always < 1<<31.
+pos: u32 = 0, // Always < 1<<31.
 
 pub const Struct = struct {
     _tab: Table,

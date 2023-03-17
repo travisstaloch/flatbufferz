@@ -85,16 +85,15 @@ pub fn main() !void {
     // to query the length of the vector. You can index the vector by passing an index value
     // into the accessor.
     for (0..monster.InventoryLen()) |i|
-        try testing.expectEqual(@intCast(u8, i), monster.Inventory(i));
+        try testing.expectEqual(@intCast(u8, i), monster.Inventory(i).?);
 
     const expected_weapon_names = [_][]const u8{ "Sword", "Axe" };
     const expected_weapon_damages = [_]i16{ 3, 5 };
 
     for (0..monster.WeaponsLen()) |i| {
-        if (monster.Weapons(i)) |weapon| {
-            try testing.expectEqualStrings(expected_weapon_names[i], weapon.Name());
-            try testing.expectEqual(expected_weapon_damages[i], weapon.Damage());
-        }
+        const weapon = monster.Weapons(i).?;
+        try testing.expectEqualStrings(expected_weapon_names[i], weapon.Name());
+        try testing.expectEqual(expected_weapon_damages[i], weapon.Damage());
     }
 
     // For FlatBuffer `union`s, you can get the type of the union, as well as the union

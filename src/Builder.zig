@@ -379,15 +379,15 @@ pub fn createByteString(b: *Builder, s: []const u8) !u32 {
     b.assertNotNested();
     b.nested = true;
 
-    try b.prep(size_u32, (s.len + 1) * size_byte);
+    try b.prep(size_u32, (@intCast(i32, s.len) + 1) * size_byte);
     b.place(u8, 0);
 
     const l = @intCast(u32, s.len);
 
     b.head -= l;
-    std.mem.copy(b.bytes.items[b.head .. b.head + l], s);
+    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
 
-    return b.endVector(s.len);
+    return b.endVector(@intCast(u32, s.len));
 }
 
 /// write a byte vector

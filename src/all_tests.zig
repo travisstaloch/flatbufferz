@@ -78,6 +78,590 @@ fn checkGeneratedBuild(
     return .{ try b.bytes.toOwnedSlice(b.alloc), b.head };
 }
 
+fn check(want: []const u8, b: Builder, i: *usize) !void {
+    i.* += 1;
+    const got = b.bytes.items[b.head..];
+    try testing.expectEqualStrings(want, got);
+}
+
+/// verify the bytes of a Builder in various scenarios.
+fn checkByteLayout(alloc: mem.Allocator) !void {
+    var i: usize = 0;
+    { // test 1: numbers
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try check(&[_]u8{}, b, &i);
+        try b.prepend(bool, true);
+        try check(&[_]u8{1}, b, &i);
+        try b.prepend(i8, -127);
+        try check(&[_]u8{ 129, 1 }, b, &i);
+        try b.prepend(u8, 255);
+        try check(&[_]u8{ 255, 129, 1 }, b, &i);
+        try b.prepend(i16, -32222);
+        try check(&[_]u8{ 0x22, 0x82, 0, 255, 129, 1 }, b, &i); // first pa
+        try b.prepend(u16, 0xFEEE);
+        try check(&[_]u8{ 0xEE, 0xFE, 0x22, 0x82, 0, 255, 129, 1 }, b, &i); // no pad this tim
+        try b.prepend(i32, -53687092);
+        try check(&[_]u8{ 204, 204, 204, 252, 0xEE, 0xFE, 0x22, 0x82, 0, 255, 129, 1 }, b, &i);
+        try b.prepend(u32, 0x98765432);
+        try check(&[_]u8{ 0x32, 0x54, 0x76, 0x98, 204, 204, 204, 252, 0xEE, 0xFE, 0x22, 0x82, 0, 255, 129, 1 }, b, &i);
+    }
+    { // test 1b: numbers 2
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try b.prepend(u64, 0x1122334455667788);
+        try check(&[_]u8{ 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }, b, &i);
+    }
+    { // test 2: 1xbyte vector
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try check(&[_]u8{}, b, &i);
+        _ = try b.startVector(fb.Builder.size_byte, 1, 1);
+        try check(&[_]u8{ 0, 0, 0 }, b, &i); // align to 4byte
+        try b.prepend(u8, 1);
+        try check(&[_]u8{ 1, 0, 0, 0 }, b, &i);
+        _ = b.endVector(1);
+        try check(&[_]u8{ 1, 0, 0, 0, 1, 0, 0, 0 }, b, &i); // paddin
+    }
+    { // test 3: 2xbyte vector
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_byte, 2, 1);
+        try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
+        try b.prepend(u8, 1);
+        try check(&[_]u8{ 1, 0, 0 }, b, &i);
+        try b.prepend(u8, 2);
+        try check(&[_]u8{ 2, 1, 0, 0 }, b, &i);
+        _ = b.endVector(2);
+        try check(&[_]u8{ 2, 0, 0, 0, 2, 1, 0, 0 }, b, &i); // paddin
+    }
+    { // test 3b: 11xbyte vector matches builder size
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_byte, 8, 1);
+        var start = std.ArrayList(u8).init(alloc);
+        defer start.deinit();
+        try check(start.items, b, &i);
+        for (1..12) |j| {
+            try b.prepend(u8, @intCast(u8, j));
+            try start.insert(0, @intCast(u8, j));
+            try check(start.items, b, &i);
+        }
+        _ = b.endVector(8);
+        try start.insertSlice(0, &.{ 8, 0, 0, 0 });
+        try check(start.items, b, &i);
+    }
+
+    { // test 4: 1xuint16 vector
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_u16, 1, 1);
+        try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
+        try b.prepend(u16, 1);
+        try check(&[_]u8{ 1, 0, 0, 0 }, b, &i);
+        _ = b.endVector(1);
+        try check(&[_]u8{ 1, 0, 0, 0, 1, 0, 0, 0 }, b, &i); // paddin
+    }
+
+    { // test 5: 2xuint16 vector
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_u16, 2, 1);
+        try check(&[_]u8{}, b, &i); // align to 4byte
+        try b.prepend(u16, 0xABCD);
+        try check(&[_]u8{ 0xCD, 0xAB }, b, &i);
+        try b.prepend(u16, 0xDCBA);
+        try check(&[_]u8{ 0xBA, 0xDC, 0xCD, 0xAB }, b, &i);
+        _ = b.endVector(2);
+        try check(&[_]u8{ 2, 0, 0, 0, 0xBA, 0xDC, 0xCD, 0xAB }, b, &i);
+    }
+
+    { // test 6: CreateString
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.createString("foo");
+        try check(&[_]u8{ 3, 0, 0, 0, 'f', 'o', 'o', 0 }, b, &i); // 0-terminated, no pa
+        _ = try b.createString("moop");
+        try check(&[_]u8{
+            4, 0, 0, 0, 'm', 'o', 'o', 'p', 0, 0, 0, 0, // 0-terminated, 3-byte pa
+            3, 0, 0, 0, 'f', 'o', 'o', 0,
+        }, b, &i);
+    }
+
+    { // test 6b: CreateString unicode
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        // These characters are chinese from blog.golang.org/strings
+        // We use escape codes here so that editors without unicode support
+        // aren't bothered:
+        const uni_str = "\u{65e5}\u{672c}\u{8a9e}";
+        _ = try b.createString(uni_str);
+        try check(&[_]u8{
+            9, 0, 0, 0, 230, 151, 165, 230, 156, 172, 232, 170, 158, 0, //  null-terminated, 2-byte pa
+            0, 0,
+        }, b, &i);
+    }
+
+    { // test 6c: CreateByteString
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.createByteString("foo");
+        try check(&[_]u8{ 3, 0, 0, 0, 'f', 'o', 'o', 0 }, b, &i); // 0-terminated, no pa
+        _ = try b.createByteString("moop");
+        try check(&[_]u8{
+            4, 0, 0, 0, 'm', 'o', 'o', 'p', 0, 0, 0, 0, // 0-terminated, 3-byte pa
+            3, 0, 0, 0, 'f', 'o', 'o', 0,
+        }, b, &i);
+    }
+    { // test 7: empty vtable
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try b.startObject(0);
+        try check(&[_]u8{}, b, &i);
+        _ = try b.endObject();
+        try check(&[_]u8{ 4, 0, 4, 0, 4, 0, 0, 0 }, b, &i);
+    }
+    { // test 8: vtable with one true bool
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try check(&[_]u8{}, b, &i);
+        try b.startObject(1);
+        try check(&[_]u8{}, b, &i);
+        try b.prependSlot(bool, 0, true, false);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            8, 0, // length of object including vtable offset
+            7, 0, // start of bool value
+            6, 0, 0, 0, // offset for start of vtable (int32)
+            0, 0, 0, // padded to 4 bytes
+            1, // bool value
+        }, b, &i);
+    }
+    { // test 9: vtable with one default bool
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try check(&[_]u8{}, b, &i);
+        try b.startObject(1);
+        try check(&[_]u8{}, b, &i);
+        try b.prependSlot(bool, 0, false, false);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            4, 0, // vtable bytes
+            4, 0, // end of object from here
+            // entry 1 is zero and not stored.
+            4, 0, 0, 0, // offset for start of vtable (int32)
+        }, b, &i);
+    }
+    { // test 10: vtable with one int16
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try b.startObject(1);
+        try b.prependSlot(i16, 0, 0x789A, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            8, 0, // end of object from here
+            6, 0, // offset to value
+            6, 0, 0, 0, // offset for start of vtable (int32)
+            0,    0, // padding to 4 bytes
+            0x9A, 0x78,
+        }, b, &i);
+    }
+    { // test 11: vtable with two int16
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try b.startObject(2);
+        try b.prependSlot(i16, 0, 0x3456, 0);
+        try b.prependSlot(i16, 1, 0x789A, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            8, 0, // vtable bytes
+            8, 0, // end of object from here
+            6, 0, // offset to value 0
+            4, 0, // offset to value 1
+            8, 0, 0, 0, // offset for start of vtable (int32)
+            0x9A, 0x78, // value 1
+            0x56, 0x34, // value 0
+        }, b, &i);
+    }
+    { // test 12: vtable with int16 and bool
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        try b.startObject(2);
+        try b.prependSlot(i16, 0, 0x3456, 0);
+        try b.prependSlot(bool, 1, true, false);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            8, 0, // vtable bytes
+            8, 0, // end of object from here
+            6, 0, // offset to value 0
+            5, 0, // offset to value 1
+            8, 0, 0, 0, // offset for start of vtable (int32)
+            0, // padding
+            1, // value 1
+            0x56, 0x34, // value 0
+        }, b, &i);
+    }
+    { // test 12: vtable with empty vector
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_byte, 0, 1);
+        const vecend = b.endVector(0);
+        _ = try b.startObject(1);
+        try b.prependSlotUOff(0, vecend, 0);
+
+        _ = try b.endObject();
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            8, 0,
+            4, 0, // offset to vector offset
+            6, 0, 0, 0, // offset for start of vtable (int32)
+            4, 0, 0, 0,
+            0, 0, 0, 0, // length of vector (not in struct)
+        }, b, &i);
+    }
+    { // test 12b: vtable with empty vector of byte and some scalars
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_byte, 0, 1);
+        const vecend = b.endVector(0);
+        _ = try b.startObject(2);
+        try b.prependSlot(i16, 0, 55, 0);
+        try b.prependSlotUOff(1, vecend, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            8,  0, // vtable bytes
+            12, 0,
+            10, 0, // offset to value 0
+            4, 0, // offset to vector offset
+            8, 0, 0, 0, // vtable loc
+            8, 0, 0, 0, // value 1
+            0, 0, 55, 0, // value 0
+            0, 0, 0, 0, // length of vector (not in struct)
+        }, b, &i);
+    }
+    { // test 13: vtable with 1 int16 and 2-vector of int16
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_i16, 2, 1);
+        try b.prepend(i16, 0x1234);
+        try b.prepend(i16, 0x5678);
+        const vecend = b.endVector(2);
+        _ = try b.startObject(2);
+        try b.prependSlotUOff(1, vecend, 0);
+        try b.prependSlot(i16, 0, 55, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            8, 0, // vtable bytes
+            12, 0, // length of object
+            6, 0, // start of value 0 from end of vtable
+            8, 0, // start of value 1 from end of buffer
+            8, 0, 0, 0, // offset for start of vtable (int32)
+            0, 0, // padding
+            55, 0, // value 0
+            4, 0, 0, 0, // vector position from here
+            2, 0, 0, 0, // length of vector (uint32)
+            0x78, 0x56, // vector value 1
+            0x34, 0x12, // vector value 0
+        }, b, &i);
+    }
+    { // test 14: vtable with 1 struct of 1 int8, 1 int16, 1 int32
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(1);
+        try b.prep(4 + 4 + 4, 0);
+        try b.prepend(i8, 55);
+        b.pad(3);
+        try b.prepend(i16, 0x1234);
+        b.pad(2);
+        try b.prepend(i32, 0x12345678);
+        const structStart = b.offset();
+        b.prependSlotStruct(0, structStart, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            16, 0, // end of object from here
+            4, 0, // start of struct from here
+            6, 0, 0, 0, // offset for start of vtable (int32)
+            0x78, 0x56, 0x34, 0x12, // value 2
+            0, 0, // padding
+            0x34, 0x12, // value 1
+            0, 0, 0, // padding
+            55, // value 0
+        }, b, &i);
+    }
+    { // test 15: vtable with 1 vector of 2 struct of 2 int8
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startVector(fb.Builder.size_i8 * 2, 2, 1);
+        try b.prepend(i8, 33);
+        try b.prepend(i8, 44);
+        try b.prepend(i8, 55);
+        try b.prepend(i8, 66);
+        const vecend = b.endVector(2);
+        _ = try b.startObject(1);
+        try b.prependSlotUOff(0, vecend, 0);
+        _ = try b.endObject();
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            8, 0,
+            4, 0, // offset of vector offset
+            6, 0, 0, 0, // offset for start of vtable (int32)
+            4, 0, 0, 0, // vector start offset
+            2, 0, 0, 0, // vector length
+            66, // vector value 1,1
+            55, // vector value 1,0
+            44, // vector value 0,1
+            33, // vector value 0,0
+        }, b, &i);
+    }
+    { // test 16: table with some elements
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(2);
+        try b.prependSlot(i8, 0, 33, 0);
+        try b.prependSlot(i16, 1, 66, 0);
+        const off = try b.endObject();
+        try b.finish(off);
+
+        try check(&[_]u8{
+            12, 0, 0, 0, // root of table: points to vtable offset
+            8, 0, // vtable bytes
+            8, 0, // end of object from here
+            7, 0, // start of value 0
+            4, 0, // start of value 1
+            8, 0, 0, 0, // offset for start of vtable (int32)
+            66, 0, // value 1
+            0, // padding
+            33, // value 0
+        }, b, &i);
+    }
+    { // test 17: one unfinished table and one finished table
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(2);
+        try b.prependSlot(i8, 0, 33, 0);
+        try b.prependSlot(i8, 1, 44, 0);
+        var off = try b.endObject();
+        try b.finish(off);
+
+        _ = try b.startObject(3);
+        try b.prependSlot(i8, 0, 55, 0);
+        try b.prependSlot(i8, 1, 66, 0);
+        try b.prependSlot(i8, 2, 77, 0);
+        off = try b.endObject();
+        try b.finish(off);
+
+        try check(&[_]u8{
+            16, 0, 0, 0, // root of table: points to object
+            0, 0, // padding
+            10, 0, // vtable bytes
+            8, 0, // size of object
+            7, 0, // start of value 0
+            6, 0, // start of value 1
+            5, 0, // start of value 2
+            10, 0, 0, 0, // offset for start of vtable (int32)
+            0, // padding
+            77, // value 2
+            66, // value 1
+            55, // value 0
+            12, 0, 0, 0, // root of table: points to object
+            8, 0, // vtable bytes
+            8, 0, // size of object
+            7, 0, // start of value 0
+            6, 0, // start of value 1
+            8, 0, 0, 0, // offset for start of vtable (int32)
+            0, 0, // padding
+            44, // value 1
+            33, // value 0
+        }, b, &i);
+    }
+    { // test 18: a bunch of bools
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(8);
+        try b.prependSlot(bool, 0, true, false);
+        try b.prependSlot(bool, 1, true, false);
+        try b.prependSlot(bool, 2, true, false);
+        try b.prependSlot(bool, 3, true, false);
+        try b.prependSlot(bool, 4, true, false);
+        try b.prependSlot(bool, 5, true, false);
+        try b.prependSlot(bool, 6, true, false);
+        try b.prependSlot(bool, 7, true, false);
+        const off = try b.endObject();
+        try b.finish(off);
+
+        try check(&[_]u8{
+            24, 0, 0, 0, // root of table: points to vtable offset
+            20, 0, // vtable bytes
+            12, 0, // size of object
+            11, 0, // start of value 0
+            10, 0, // start of value 1
+            9, 0, // start of value 2
+            8, 0, // start of value 3
+            7, 0, // start of value 4
+            6, 0, // start of value 5
+            5, 0, // start of value 6
+            4, 0, // start of value 7
+            20, 0, 0, 0, // vtable offset
+            1, // value 7
+            1, // value 6
+            1, // value 5
+            1, // value 4
+            1, // value 3
+            1, // value 2
+            1, // value 1
+            1, // value 0
+        }, b, &i);
+    }
+    { // test 19: three bools
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(3);
+        try b.prependSlot(bool, 0, true, false);
+        try b.prependSlot(bool, 1, true, false);
+        try b.prependSlot(bool, 2, true, false);
+        const off = try b.endObject();
+        try b.finish(off);
+
+        try check(&[_]u8{
+            16, 0, 0, 0, // root of table: points to vtable offset
+            0, 0, // padding
+            10, 0, // vtable bytes
+            8, 0, // size of object
+            7, 0, // start of value 0
+            6, 0, // start of value 1
+            5, 0, // start of value 2
+            10, 0, 0, 0, // vtable offset from here
+            0, // padding
+            1, // value 2
+            1, // value 1
+            1, // value 0
+        }, b, &i);
+    }
+
+    { // test 20: some floats
+        var b = Builder.init(alloc);
+        defer {
+            b.deinit();
+            b.bytes.deinit(alloc);
+        }
+
+        _ = try b.startObject(1);
+        try b.prependSlot(f32, 0, 1.0, 0.0);
+        _ = try b.endObject();
+
+        try check(&[_]u8{
+            6, 0, // vtable bytes
+            8, 0, // size of object
+            4, 0, // start of value 0
+            6, 0, 0, 0, // vtable offset
+            0, 0, 128, 63, // value 0
+        }, b, &i);
+    }
+}
+
 /// checks that the table accessors work as expected.
 fn checkTableAccessors(alloc: mem.Allocator) !void {
     // test struct accessor
@@ -377,6 +961,11 @@ fn checkObjectAPI(
 
 const talloc = testing.allocator;
 test "Object API" {
+    // Verify that the Go FlatBuffers runtime library generates the
+    // expected bytes (does not use any schema):
+    try checkByteLayout(talloc);
+    // try checkMutateMethods(talloc);
+
     try checkTableAccessors(talloc);
     // Verify that using the generated code builds a buffer without
     // returning errors:

@@ -1142,13 +1142,22 @@ fn initializeExisting(o: Object, writer: anytype) !void {
 
 fn genTableAccessor(o: Object, writer: anytype) !void {
     // Initialize an existing object with other data, to avoid an allocation.
-    try writer.print(
-        \\pub fn Table(x: {s}) fb.Table {{
-        \\return x._tab;
-        \\}}
-        \\
-        \\
-    , .{lastName(o.Name())});
+    if (o.IsStruct())
+        try writer.print(
+            \\pub fn Table(x: {s}) fb.Table {{
+            \\return x._tab._tab;
+            \\}}
+            \\
+            \\
+        , .{lastName(o.Name())})
+    else
+        try writer.print(
+            \\pub fn Table(x: {s}) fb.Table {{
+            \\return x._tab;
+            \\}}
+            \\
+            \\
+        , .{lastName(o.Name())});
 }
 
 /// Get the length of a vector.

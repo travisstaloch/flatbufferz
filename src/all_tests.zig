@@ -84,11 +84,11 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
     const pos = try Vec3.Create(&b, 1.0, 2.0, 3.0, 3.0, Color.Green, 5, 6);
     _ = try b.finish(pos);
-    const vec3Bytes = b.finishedBytes();
-    const vec3 = fb.GetRootAs(vec3Bytes, 0, Vec3);
-    try testing.expect(mem.eql(u8, vec3Bytes, vec3.Table().bytes));
+    const vec3_bytes = b.finishedBytes();
+    const vec3 = fb.GetRootAs(vec3_bytes, 0, Vec3);
+    try testing.expect(mem.eql(u8, vec3_bytes, vec3.Table().bytes));
     b.deinit();
-    alloc.free(vec3Bytes);
+    alloc.free(vec3_bytes);
 
     // test table accessor
     b = Builder.init(alloc);
@@ -100,10 +100,10 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     try Stat.AddCount(&b, 12345);
     const pos2 = try Stat.End(&b);
     _ = try b.finish(pos2);
-    const statBytes = b.finishedBytes();
-    const stat = Stat.GetRootAs(statBytes, 0);
-    try testing.expect(mem.eql(u8, statBytes, stat.Table().bytes));
-    alloc.free(statBytes);
+    const stat_bytes = b.finishedBytes();
+    const stat = Stat.GetRootAs(stat_bytes, 0);
+    try testing.expect(mem.eql(u8, stat_bytes, stat.Table().bytes));
+    alloc.free(stat_bytes);
 }
 
 /// checks that the given buffer is evaluated correctly

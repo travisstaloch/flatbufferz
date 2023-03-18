@@ -135,7 +135,7 @@ pub fn writeVtable(b: *Builder) !u32 {
     {
         var i = @bitCast(isize, b.vtable.items.len) - 1;
         while (i >= 0 and b.vtable.items[@bitCast(usize, i)] == 0) : (i -= 1) {}
-        b.vtable.items.len = @bitCast(usize, i) + 1;
+        b.vtable.items.len = @bitCast(usize, i + 1);
     }
     // Search backwards through existing vtables, because similar vtables
     // are likely to have been recently appended. See

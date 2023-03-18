@@ -89,7 +89,7 @@ pub fn reset(b: *Builder) void {
 
 /// FinishedBytes returns a pointer to the written data in the byte buffer.
 /// Panics if the builder is not in a finished state (which is caused by calling
-pub fn finishedBytes(b: *Builder) []const u8 {
+pub fn finishedBytes(b: *Builder) []u8 {
     b.assertFinished();
     return b.bytes.items[b.head..];
 }

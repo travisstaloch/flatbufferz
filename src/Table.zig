@@ -9,7 +9,7 @@ const encode = fb.encode;
 const size_u32 = Builder.size_u32;
 const Table = @This();
 
-bytes: []const u8,
+bytes: []u8,
 pos: u32 = 0, // Always < 1<<31.
 
 pub const Struct = struct {
@@ -25,21 +25,21 @@ pub const Struct = struct {
     }
 };
 
-pub fn init(bytes: []const u8, pos: u32) Table {
+pub fn init(bytes: []u8, pos: u32) Table {
     return .{ .bytes = bytes, .pos = pos };
 }
 
-pub fn Init(comptime T: type) fn ([]const u8, u32) T {
+pub fn Init(comptime T: type) fn ([]u8, u32) T {
     return struct {
-        pub fn func(buf: []const u8, i: u32) T {
+        pub fn func(buf: []u8, i: u32) T {
             return .{ ._tab = Table.init(buf, i) };
         }
     }.func;
 }
 
-pub fn GetRootAs(comptime T: type) fn ([]const u8, u32) T {
+pub fn GetRootAs(comptime T: type) fn ([]u8, u32) T {
     return struct {
-        pub fn func(buf: []const u8, off: u32) T {
+        pub fn func(buf: []u8, off: u32) T {
             const n = encode.read(u32, buf[off..]);
             return T.init(buf, n + off);
         }
@@ -283,3 +283,18 @@ pub fn ReadStructIndirect(
 //         }
 //     }.func;
 // }
+
+/// writes a T at the given offset
+pub fn mutate(t: Table, comptime T: type, off: u32, n: T) bool {
+    encode.write(T, t.bytes[off..], n);
+    return true;
+}
+
+// writes a T at given vtable location
+pub fn mutateSlot(t: Table, comptime T: type, slot: u16, n: T) bool {
+    const off = t.offset(slot);
+    if (off != 0) {
+        _ = t.mutate(T, t.pos + off, n);
+        return true;
+    } else return false;
+}

@@ -1111,7 +1111,7 @@ fn beginStruct(o: Object, writer: anytype) !void {
 
 fn newRootTypeFromBuffer(o: Object, writer: anytype) !void {
     try writer.print(
-        \\pub fn GetRootAs(buf: []const u8, offset: u32) {0s} {{
+        \\pub fn GetRootAs(buf: []u8, offset: u32) {0s} {{
         \\const n = fb.encode.read(u32, buf[offset..]);
         \\return {0s}.init(buf, n+offset);
         \\}}
@@ -1124,7 +1124,7 @@ fn initializeExisting(o: Object, writer: anytype) !void {
     // Initialize an existing object with other data, to avoid an allocation.
     if (o.IsStruct())
         try writer.print(
-            \\pub fn init(bytes: []const u8, pos: u32) {s} {{
+            \\pub fn init(bytes: []u8, pos: u32) {s} {{
             \\return .{{ ._tab = .{{ ._tab = .{{ .bytes = bytes, .pos = pos }}}}}};
             \\}}
             \\
@@ -1132,7 +1132,7 @@ fn initializeExisting(o: Object, writer: anytype) !void {
         , .{lastName(o.Name())})
     else
         try writer.print(
-            \\pub fn init(bytes: []const u8, pos: u32) {s} {{
+            \\pub fn init(bytes: []u8, pos: u32) {s} {{
             \\return .{{ ._tab = .{{ .bytes = bytes, .pos = pos }}}};
             \\}}
             \\
@@ -2033,6 +2033,93 @@ fn genStructAccessor(
     }
 }
 
+fn mutateScalarFieldOfStruct(
+    o: Object,
+    field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
+    const field_ty = field.Type().?;
+    const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
+    try writer.print(
+        \\pub fn Mutate{0}(rcv: {1s}, n: {2}) bool {{
+        \\return rcv._tab._tab.mutate({2}, rcv._tab._tab.pos + {3}, n);
+        \\}}
+        \\
+        \\
+    , .{ fname_camel_upper, lastName(o.Name()), fty_fmt, field.Offset() });
+}
+
+fn mutateScalarFieldOfTable(
+    o: Object,
+    field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
+    const field_ty = field.Type().?;
+    const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
+    try writer.print(
+        \\pub fn Mutate{0}(rcv: {1s}, n: {2}) bool {{
+        \\return rcv._tab.mutateSlot({2}, {3}, n);
+        \\}}
+        \\
+        \\
+    , .{ fname_camel_upper, lastName(o.Name()), fty_fmt, field.Offset() });
+}
+
+fn mutateElementOfVectorOfNonStruct(
+    o: Object,
+    field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    _ = imports;
+    const fname_camel_upper = util.fmtCamelUpper(field.Name());
+    const field_ty = field.Type().?;
+    const ele_tyname = zigScalarTypename(field_ty.Element());
+    try writer.print(
+        \\pub fn Mutate{0}(rcv: {1s}, j: usize, n: {2s}) bool 
+    , .{ fname_camel_upper, lastName(o.Name()), ele_tyname });
+    try offsetPrefix(field, writer);
+    try writer.print(
+        \\const a = rcv._tab.vector(o);
+        \\return rcv._tab.mutate({0s}, a + @intCast(u32, j) * {1}, n);
+        \\}}
+        \\return false;
+        \\}}
+        \\
+        \\
+    , .{ ele_tyname, inlineSize(field_ty, schema) });
+}
+
+/// Generate a struct field setter, conditioned on its child type(s).
+fn genStructMutator(
+    o: Object,
+    field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    try genComment(o, writer);
+    const field_ty = field.Type().?;
+    const field_base_ty = field_ty.BaseType();
+    if (field_base_ty.isScalar()) {
+        try if (o.IsStruct())
+            mutateScalarFieldOfStruct(o, field, schema, imports, writer)
+        else
+            mutateScalarFieldOfTable(o, field, schema, imports, writer);
+    } else if (field_base_ty == .VECTOR) {
+        const ele = field_ty.Element();
+        if (ele.isScalar())
+            try mutateElementOfVectorOfNonStruct(o, field, schema, imports, writer);
+    }
+}
+
 /// Generate struct or table methods.
 fn genStruct(
     o: Object,
@@ -2067,8 +2154,8 @@ fn genStruct(
         if (field.Deprecated()) continue;
 
         try genStructAccessor(o, field, schema, imports, writer);
-        // try genStructMutator(o, field, writer);
-        // todo("genStructMutator", .{});
+        try genStructMutator(o, field, schema, imports, writer);
+
         // TODO(michaeltle): Support querying fixed struct by key. Currently,
         // we only support keyed tables.
         if (!o.IsStruct() and field.Key()) {

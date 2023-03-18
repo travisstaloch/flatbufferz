@@ -14,6 +14,7 @@ const Test = gen.MyGame_Example_Test.Test;
 const Vec3 = gen.MyGame_Example_Vec3.Vec3;
 const Color = gen.MyGame_Example_Color.Color;
 const Any = gen.MyGame_Example_Any.Any;
+const Stat = gen.MyGame_Example_Stat.Stat;
 const Fail = fn (comptime []const u8, anytype) void;
 
 // build an example Monster. returns (buf,offset)
@@ -75,6 +76,34 @@ fn checkGeneratedBuild(
     }
 
     return .{ try b.bytes.toOwnedSlice(b.alloc), b.head };
+}
+
+/// checks that the table accessors work as expected.
+fn checkTableAccessors(alloc: mem.Allocator) !void {
+    // test struct accessor
+    var b = Builder.init(alloc);
+    const pos = try Vec3.Create(&b, 1.0, 2.0, 3.0, 3.0, Color.Green, 5, 6);
+    _ = try b.finish(pos);
+    const vec3Bytes = b.finishedBytes();
+    const vec3 = fb.GetRootAs(vec3Bytes, 0, Vec3);
+    try testing.expect(mem.eql(u8, vec3Bytes, vec3.Table().bytes));
+    b.deinit();
+    alloc.free(vec3Bytes);
+
+    // test table accessor
+    b = Builder.init(alloc);
+    defer b.deinit();
+    const str = try b.createString("MyStat");
+    try Stat.Start(&b);
+    try Stat.AddId(&b, str);
+    try Stat.AddVal(&b, 12345678);
+    try Stat.AddCount(&b, 12345);
+    const pos2 = try Stat.End(&b);
+    _ = try b.finish(pos2);
+    const statBytes = b.finishedBytes();
+    const stat = Stat.GetRootAs(statBytes, 0);
+    try testing.expect(mem.eql(u8, statBytes, stat.Table().bytes));
+    alloc.free(statBytes);
 }
 
 /// checks that the given buffer is evaluated correctly
@@ -348,6 +377,7 @@ fn checkObjectAPI(
 
 const talloc = testing.allocator;
 test "Object API" {
+    try checkTableAccessors(talloc);
     // Verify that using the generated code builds a buffer without
     // returning errors:
     const gen_off = try checkGeneratedBuild(talloc, false, std.log.err);

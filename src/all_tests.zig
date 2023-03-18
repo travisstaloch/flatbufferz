@@ -21,7 +21,7 @@ fn checkGeneratedBuild(
     alloc: mem.Allocator,
     sizePrefix: bool,
     comptime fail: Fail,
-) !struct { []const u8, u32 } {
+) !struct { []u8, u32 } {
     var b = Builder.init(alloc);
     defer b.deinit();
 
@@ -81,7 +81,7 @@ fn checkGeneratedBuild(
 /// as the example Monster.
 fn checkReadBuffer(
     alloc: mem.Allocator,
-    buf: []const u8,
+    buf: []u8,
     offset: u32,
     sizePrefix: bool,
     comptime fail: Fail,
@@ -175,9 +175,145 @@ fn checkReadBuffer(
         try testing.expectEqualStrings("test2", monster.Testarrayofstring(1).?);
     }
 }
+
+// check that the given buffer can be mutated correctly
+// as the example Monster. Only available scalar values are mutated.
+fn checkMutateBuffer(
+    alloc: mem.Allocator,
+    org: []const u8,
+    offset: u32,
+    sizePrefix: bool,
+    comptime fail: Fail,
+) !void {
+    _ = fail;
+
+    // make a copy to mutate
+    var buf = try alloc.dupe(u8, org);
+    defer alloc.free(buf);
+
+    // load monster data from the buffer
+    var monster = if (sizePrefix)
+        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
+        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+    else
+        Monster.GetRootAs(buf, offset);
+
+    const testForOriginalValues = struct {
+        fn func(mon: Monster) !void {
+            try testing.expectEqual(@as(i16, 80), mon.Hp());
+            try testing.expectEqual(@as(i16, 150), mon.Mana());
+            try testing.expect(mon.Testbool());
+            try testing.expectEqual(@as(f32, 1.0), mon.Pos().?.X());
+            try testing.expectEqual(@as(f32, 2.0), mon.Pos().?.Y());
+            try testing.expectEqual(@as(f32, 3.0), mon.Pos().?.Z());
+            try testing.expectEqual(@as(f64, 3.0), mon.Pos().?.Test1());
+            try testing.expectEqual(Color.Green, mon.Pos().?.Test2());
+            try testing.expectEqual(@as(i16, 5), mon.Pos().?.Test3().A());
+            try testing.expectEqual(@as(i8, 6), mon.Pos().?.Test3().B());
+            try testing.expectEqual(@as(u8, 2), mon.Inventory(2).?);
+        }
+    }.func;
+
+    const testMutability = struct {
+        fn func(mon: Monster) !void {
+            try testing.expect(mon.MutateHp(70));
+            try testing.expect(!mon.MutateMana(140));
+            try testing.expect(mon.MutateTestbool(false));
+            try testing.expect(mon.Pos().?.MutateX(10.0));
+            try testing.expect(mon.Pos().?.MutateY(20.0));
+            try testing.expect(mon.Pos().?.MutateZ(30.0));
+            try testing.expect(mon.Pos().?.MutateTest1(30.0));
+            try testing.expect(mon.Pos().?.MutateTest2(.Blue));
+            try testing.expect(mon.Pos().?.Test3().MutateA(50));
+            try testing.expect(mon.Pos().?.Test3().MutateB(60));
+            try testing.expect(mon.MutateInventory(2, 200));
+        }
+    }.func;
+
+    const testForMutatedValues = struct {
+        fn func(mon: Monster) !void {
+            try testing.expectEqual(@as(i16, 70), mon.Hp());
+            try testing.expectEqual(@as(i16, 150), mon.Mana());
+            try testing.expect(!mon.Testbool());
+            try testing.expectEqual(@as(f32, 10.0), mon.Pos().?.X());
+            try testing.expectEqual(@as(f32, 20.0), mon.Pos().?.Y());
+            try testing.expectEqual(@as(f32, 30.0), mon.Pos().?.Z());
+            try testing.expectEqual(@as(f64, 30.0), mon.Pos().?.Test1());
+            try testing.expectEqual(Color.Blue, mon.Pos().?.Test2());
+            try testing.expectEqual(@as(i16, 50), mon.Pos().?.Test3().A());
+            try testing.expectEqual(@as(i8, 60), mon.Pos().?.Test3().B());
+            try testing.expectEqual(@as(u8, 200), mon.Inventory(2).?);
+        }
+    }.func;
+
+    const testInvalidEnumValues = struct {
+        fn func(mon: Monster) !void {
+            _ = mon;
+            // TODO?
+            //     testcase{"Pos.Test2", func() bool { return monster.Pos(nil).MutateTest2(example.Color(20)) }},
+            //     testcase{"Pos.Test2", func() bool { return monster.Pos(nil).Test2() == example.Color(20) }},
+            // try testing.expect(mon.Pos().?.MutateTest2(@intToEnum(Color, 20)));
+            // try testing.expectEqual(@intToEnum(Color, 20), mon.Pos().?.Test2());
+        }
+    }.func;
+
+    // make sure original values are okay
+    try testForOriginalValues(monster);
+
+    // try to mutate fields and check mutability
+    try testMutability(monster);
+
+    // test whether values have changed
+    try testForMutatedValues(monster);
+
+    // make sure the buffer has changed
+    try testing.expect(!mem.eql(u8, buf, org));
+
+    // To make sure the buffer has changed accordingly
+    // Read data from the buffer and verify all fields
+    monster = if (sizePrefix)
+        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
+        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+    else
+        Monster.GetRootAs(buf, offset);
+
+    try testForMutatedValues(monster);
+
+    // a couple extra tests for "invalid" enum values, which don't correspond to
+    // anything in the schema, but are allowed
+    try testInvalidEnumValues(monster);
+
+    // reverting all fields to original values should
+    // re-create the original buffer. Mutate all fields
+    // back to their original values and compare buffers.
+    // This test is done to make sure mutations do not do
+    // any unnecessary changes to the buffer.
+    monster = if (sizePrefix)
+        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
+        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+    else
+        Monster.GetRootAs(buf, offset);
+
+    _ = monster.MutateHp(80);
+    _ = monster.MutateTestbool(true);
+    _ = monster.Pos().?.MutateX(1.0);
+    _ = monster.Pos().?.MutateY(2.0);
+    _ = monster.Pos().?.MutateZ(3.0);
+    _ = monster.Pos().?.MutateTest1(3.0);
+    _ = monster.Pos().?.MutateTest2(.Green);
+    _ = monster.Pos().?.Test3().MutateA(5);
+    _ = monster.Pos().?.Test3().MutateB(6);
+    _ = monster.MutateInventory(2, 2);
+
+    try testForOriginalValues(monster);
+
+    // buffer should have original values
+    try testing.expect(mem.eql(u8, buf, org));
+}
+
 fn checkObjectAPI(
     alloc: mem.Allocator,
-    buf: []const u8,
+    buf: []u8,
     offset: u32,
     sizePrefix: bool,
     comptime fail: Fail,
@@ -218,10 +354,9 @@ test "Object API" {
     const generated = gen_off[0];
     const off = gen_off[1];
 
-    // Verify that the buffer generated by Go code is readable by the
+    // Verify that the buffer generated by zig code is readable by the
     // generated code
-    // CheckReadBuffer(generated, off, false, t.Fatalf)
     try checkReadBuffer(talloc, generated, off, false, std.log.err);
-    // CheckMutateBuffer(generated, off, false, t.Fatalf)
+    try checkMutateBuffer(talloc, generated, off, false, std.log.err);
     try checkObjectAPI(talloc, generated, off, false, std.log.err);
 }

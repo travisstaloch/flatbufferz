@@ -17,7 +17,7 @@ const util = fb.util;
 const common = fb.common;
 const todo = common.todo;
 const TypenameSet = std.StringHashMap(BaseType);
-const debug = true;
+const debug = false;
 
 fn genComment(e: anytype, writer: anytype) !void {
     for (0..e.DocumentationLen()) |i| {
@@ -48,7 +48,6 @@ pub const scalar_sizes = blk: {
     var result: [tags.len]?u32 = undefined;
     inline for (tags, 0..) |tag, i| {
         result[i] = switch (tag) {
-            .NONE => 0,
             .BOOL => 1,
             .CHAR => 1,
             .UCHAR => 1,
@@ -231,22 +230,57 @@ fn genNativeUnion(
     const ename = e.Name();
     const last_name = lastName(ename);
     try writer.print("pub const {s}T = union({s}.Tag) {{\n", .{ last_name, last_name });
-    var i: u32 = 0;
-    while (i < e.ValuesLen()) : (i += 1) {
-        const ev = e.Values(i).?;
-        const utype = ev.UnionType().?;
-        const base_ty = utype.BaseType();
-        try writer.print("{s}: ", .{ev.Name()});
-        if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("?*");
-        try writer.print("{}", .{TypeFmt.init(
-            utype,
-            schema,
-            .keep_ns,
-            imports,
-        )});
-        if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("T");
-        _ = try writer.write(",\n");
+    {
+        var i: u32 = 0;
+        while (i < e.ValuesLen()) : (i += 1) {
+            const ev = e.Values(i).?;
+            const utype = ev.UnionType().?;
+            const base_ty = utype.BaseType();
+            try writer.print("{s}: ", .{ev.Name()});
+            if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("?*");
+            try writer.print("{}", .{TypeFmt.init(
+                utype,
+                schema,
+                .keep_ns,
+                imports,
+            )});
+            if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("T");
+            _ = try writer.write(",\n");
+        }
     }
+    try writer.print(
+        \\
+        \\pub fn deinit(self: *{s}T, allocator: std.mem.Allocator) void {{
+        \\switch (self.*) {{
+        \\
+    , .{last_name});
+    {
+        var i: u32 = 0;
+        while (i < e.ValuesLen()) : (i += 1) {
+            const ev = e.Values(i).?;
+            const utype = ev.UnionType().?;
+            const base_ty = utype.BaseType();
+            const name = ev.Name();
+            if (ev.Value() == 0)
+                try writer.print(".{s} => {{}},\n", .{name})
+            else if (base_ty == .STRUCT)
+                try writer.print(
+                    \\.{0s} => |mptr| if (mptr) |x| {{
+                    \\x.deinit(allocator);
+                    \\allocator.destroy(x);
+                    \\self.{0s} = null;
+                    \\}},
+                    \\
+                ,
+                    .{name},
+                );
+        }
+    }
+    _ = try writer.write(
+        \\}
+        \\}
+        \\
+    );
 }
 
 /// gen a union pack() method
@@ -255,20 +289,21 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
     const last_name = lastName(ename);
     try writer.print(
         \\
-        \\pub fn pack(rcv: {s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) !u32 {{
-        \\  switch (rcv) {{
+        \\pub fn pack(rcv: {0s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) !u32 {{
+        \\{1s}std.debug.print("pack() {0s}T rcv=.{{s}}\n", .{{@tagName(rcv)}});
+        \\switch (rcv) {{
         \\
     ,
-        .{last_name},
+        .{ last_name, if (debug) "" else "// " },
     );
 
     var i: u32 = 0;
     while (i < e.ValuesLen()) : (i += 1) {
         const ev = e.Values(i).?;
         if (ev.Value() == 0)
-            try writer.print("    .{s} => {{}},\n", .{ev.Name()})
+            try writer.print(".{s} => {{}},\n", .{ev.Name()})
         else
-            try writer.print("    .{s} => |x| return x.?.pack(__builder, __pack_opts),\n", .{ev.Name()});
+            try writer.print(".{s} => |x| return x.?.pack(__builder, __pack_opts),\n", .{ev.Name()});
     }
     _ = try writer.write(
         \\  }
@@ -283,13 +318,15 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
 fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
     const ename = e.Name();
     const last_name = lastName(ename);
+
     try writer.print(
-        \\pub fn unpack(rcv: {s}, table: fb.Table, __pack_opts: fb.common.PackOptions) {s}T {{
+        \\pub fn unpack(rcv: {0s}.Tag, table: fb.Table, __pack_opts: fb.common.PackOptions) !{1s}T {{
+        \\{2s}std.debug.print("unpack() {0s} rcv=.{{s}}\n", .{{@tagName(rcv)}});
         \\_ = .{{__pack_opts}};
         \\  switch (rcv) {{
         \\
     ,
-        .{ last_name, last_name },
+        .{ last_name, last_name, if (debug) "" else "// " },
     );
     var i: u32 = 0;
     while (i < e.ValuesLen()) : (i += 1) {
@@ -301,8 +338,10 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
 
             const fty_fmt = TypeFmt.init(ev.UnionType().?, schema, .keep_ns, imports);
             try writer.print(
-                \\var x = {}.init(table.bytes, table.pos);
-                \\return .{{ .{s} = x.unpack(__pack_opts) }};
+                \\var x = {0}.init(table.bytes, table.pos);
+                \\var ptr = try __pack_opts.allocator.?.create({0}T);
+                \\ptr.* = try {0}T.unpack(x, __pack_opts);
+                \\return .{{ .{1s} = ptr }};
                 \\}},
                 \\
             , .{ fty_fmt, ev.Name() });
@@ -596,9 +635,10 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
     {
         const fields_len = o.FieldsLen();
         if (fields_len == 0) _ = try writer.write("_ = rcv;\n");
+
         var i: u32 = 0;
-        while (i < fields_len) : (i += 1) {
-            const field = o.Fields(i).?;
+        while (i < o.FieldsLen()) : (i += 1) {
+            const field = o.Fields(getFieldIdxById(o, i).?).?;
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
@@ -660,10 +700,10 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 try writer.print(
                     \\_ = try {s}.Start{}Vector(__builder, @bitCast(i32, {2s}));
                     \\{{
-                    \\var j = {3s} - 1;
+                    \\var j = {2s} - 1;
                     \\while (j >= 0) : (j -= 1) {{
                     \\
-                , .{ struct_type, fname_camel_upper, fname_off, fname_len });
+                , .{ struct_type, fname_camel_upper, fname_len });
                 if (fty_ele.isScalar()) {
                     try writer.print(
                         "try __builder.prepend({s}, rcv.{s}.items[@bitCast(u32, j)]);\n",
@@ -703,7 +743,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
     {
         var i: u32 = 0;
         while (i < o.FieldsLen()) : (i += 1) {
-            const field = o.Fields(i).?;
+            const field = o.Fields(getFieldIdxById(o, i).?).?;
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
@@ -730,7 +770,9 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     );
                 } else if (field_base_ty == .UNION) {
                     try writer.print(
-                        "try {s}.Add{s}(__builder, @enumToInt(rcv.{s}));\n",
+                        \\try {0s}.Add{1s}Type(__builder, rcv.{2s});
+                        \\
+                    ,
                         .{ struct_type, fname_camel_upper, fieldName(fname_orig) },
                     );
                 }
@@ -764,9 +806,10 @@ fn genNativeTableUnpack(
     {
         const fields_len = o.FieldsLen();
         if (fields_len == 0) _ = try writer.write("_ = rcv;\n_ = t;\n");
+
         var i: u32 = 0;
-        while (i < fields_len) : (i += 1) {
-            const field = o.Fields(i).?;
+        while (i < o.FieldsLen()) : (i += 1) {
+            const field = o.Fields(getFieldIdxById(o, i).?).?;
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
@@ -810,6 +853,7 @@ fn genNativeTableUnpack(
                     try writer.print(
                         \\const {3} = rcv.{1s}Len();
                         \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
+                        \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
                         \\while (j < {3}) : (j += 1) {{
@@ -821,25 +865,25 @@ fn genNativeTableUnpack(
                     try writer.print(
                         \\const {3} = rcv.{1s}Len();
                         \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
+                        \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
                         \\while (j < {3}) : (j += 1) {{
                         \\
                     , .{ fname, fname_upper_camel, fty_fmt, fname_len });
 
-                try writer.print("t.{s}.appendAssumeCapacity(", .{fname});
-                if (field_ty.Element().isScalar()) {
+                try writer.print("t.{s}.items[j] = ", .{fname});
+                const fty_ele = field_ty.Element();
+                if (fty_ele.isScalar() or fty_ele == .STRING) {
                     try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
-                } else if (field_ty.Element() == .STRING) {
-                    try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
-                } else if (field_ty.Element() == .STRUCT) {
+                } else if (fty_ele == .STRUCT) {
                     try writer.print("try {}T.unpack(x, __pack_opts)", .{fty_fmt});
                 } else {
                     // TODO(iceboy): Support vector of unions.
                     unreachable;
                 }
                 _ = try writer.write(
-                    \\);
+                    \\;
                     \\}
                     \\}
                     \\
@@ -857,12 +901,11 @@ fn genNativeTableUnpack(
                 , .{ fname_upper_camel, fty_fmt, fname });
             } else if (field_base_ty == .UNION) {
                 try writer.print(
-                    \\// unpack union
-                    \\// if (rcv.{1s}()) |_tab| {{
-                    \\// t.{0s} = try {1s}T.unpack(rcv, _tab, __pack_opts); // FIXME can't be right
-                    \\// }}
+                    \\if (rcv.{1}()) |_tab| {{
+                    \\t.{0s} = try {2}T.unpack(rcv.{1}Type(), _tab, __pack_opts);
+                    \\}}
                     \\
-                , .{ fname, fname_upper_camel });
+                , .{ fname, fname_upper_camel, fty_fmt });
             } else unreachable;
         }
     }
@@ -908,14 +951,9 @@ fn structPackArgs(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    const field_ids = try getFieldIds(imports.allocator, o);
-    defer field_ids.deinit();
-
-    var ii: u32 = 0;
-    while (ii < field_ids.items.len) : (ii += 1) {
-        const i = mem.indexOfScalar(u32, field_ids.items, @bitCast(u32, ii)).?;
-
-        const field = o.Fields(i).?;
+    var i: u32 = 0;
+    while (i < o.FieldsLen()) : (i += 1) {
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         if (field_ty.BaseType() == .STRUCT) {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
@@ -937,7 +975,7 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
     , .{olastname});
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         const fname = fieldName(field.Name());
         const fname_camel_upper = util.fmtCamelUpper(field.Name());
@@ -971,25 +1009,25 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
     , .{olastname});
 }
 
-fn genNativeDeinit(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
-    _ = imports;
-    _ = schema;
+fn genNativeDeinit(o: Object, _: Schema, _: *TypenameSet, writer: anytype) !void {
     try writer.print(
         \\pub fn deinit(self: *{s}T, allocator: std.mem.Allocator) void {{
         \\_ = .{{self, allocator}}; 
         \\
     , .{lastName(o.Name())});
+
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
         const fname = fieldName(field.Name());
 
         switch (field_base_ty) {
             .STRING => {
+                // TODO string fields - add a 'copy' option
                 try writer.print(
-                    \\allocator.free(self.{s});
+                    \\// if(self.{0s}.len > 0) allocator.free(self.{0s});
                     \\
                 , .{fname});
             },
@@ -1023,6 +1061,12 @@ fn genNativeDeinit(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                     \\
                 , .{fname});
             },
+            .UNION => {
+                try writer.print(
+                    \\self.{0s}.deinit(allocator);
+                    \\
+                , .{fname});
+            },
             else => {},
         }
     }
@@ -1037,9 +1081,10 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
     const last_name = lastName(oname);
 
     try writer.print("pub const {s}T = struct {{\n", .{last_name});
+
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         if (field.Deprecated()) continue;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
@@ -1325,13 +1370,9 @@ fn structBuilderArgs(
     schema: Schema,
     writer: anytype,
 ) !void {
-    const field_ids = try getFieldIds(imports.allocator, o);
-    defer field_ids.deinit();
-
-    var ii: u32 = 0;
-    while (ii < field_ids.items.len) : (ii += 1) {
-        const i = mem.indexOfScalar(u32, field_ids.items, @bitCast(u32, ii)).?;
-        const field = o.Fields(i).?;
+    var i: u32 = 0;
+    while (i < o.FieldsLen()) : (i += 1) {
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
         if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
@@ -1399,16 +1440,14 @@ fn genMethod(
         "UOff(");
 }
 
-fn getFieldIds(allocator: mem.Allocator, o: Object) !std.ArrayList(u32) {
-    var field_ids = std.ArrayList(u32).init(allocator);
-    {
-        var i: u32 = 0;
-        while (i < o.FieldsLen()) : (i += 1) {
-            const f = o.Fields(i).?;
-            try field_ids.append(f.Id());
-        }
+/// this allows for getting a field in declaration order rather than alphabetic order
+fn getFieldIdxById(o: Object, id: u32) ?u32 {
+    var i: u32 = 0;
+    while (i < o.FieldsLen()) : (i += 1) {
+        const field = o.Fields(i).?;
+        if (field.Id() == id) return i;
     }
-    return field_ids;
+    return null;
 }
 
 /// Recursively generate struct construction statements and instert manual
@@ -1424,16 +1463,10 @@ fn structBuilderBody(
         \\try __builder.prep({}, {});
         \\
     , .{ o.Minalign(), o.Bytesize() });
-    // field_ids makes it possible to visit fields in declaration order instead of
-    // alphabetic order
-    // FIXME: this is very slow. optimize
-    const field_ids = try getFieldIds(imports.allocator, o);
-    defer field_ids.deinit();
 
-    var ii = @intCast(i32, field_ids.items.len) - 1;
-    while (ii >= 0) : (ii -= 1) {
-        const i = mem.indexOfScalar(u32, field_ids.items, @bitCast(u32, ii)).?;
-        const field = o.Fields(@intCast(u32, i)).?;
+    var i = @intCast(i32, o.FieldsLen()) - 1;
+    while (i >= 0) : (i -= 1) {
+        const field = o.Fields(getFieldIdxById(o, @intCast(u32, i)).?).?;
         const padding = field.Padding();
         if (debug) try writer.print(
             \\// {s}.{s}: padding={} id={}
@@ -1507,7 +1540,7 @@ fn genTableBuilders(
 
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         if (field.Deprecated()) continue;
 
         try buildFieldOfTable(
@@ -1704,14 +1737,15 @@ fn getUnionField(
     );
 }
 
-fn inlineSize(ty: Type, schema: Schema) u32 {
-    _ = schema;
+fn inlineSize(ty: Type, _: Schema) u32 {
     const base_ty = ty.BaseType();
     return switch (base_ty) {
         .VECTOR => if (scalar_sizes[@enumToInt(ty.Element())]) |scalar_size|
             scalar_size
         else switch (ty.Element()) {
-            .STRUCT => ty.BaseSize(),
+            .STRUCT => blk: {
+                break :blk @bitCast(u32, ty.ElementSize());
+            },
             .VECTOR => unreachable,
             .UNION => unreachable,
             .ARRAY => unreachable,
@@ -1740,29 +1774,27 @@ fn getMemberOfVectorOfStruct(
     , .{ fname_camel_upper, lastName(oname), o2.Name() });
     try offsetPrefix(field, writer);
     const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports);
-    if (!o2.IsStruct())
-        try writer.print(
-            \\  var x = rcv._tab.vector(o);
-            \\  x += @intCast(u32, j) * {};
-            \\  x = rcv._tab.indirect(x);
-            \\  return {}.init(rcv._tab.bytes, x);
-            \\}}
-            \\return null;
-            \\}}
-            \\
-            \\
-        , .{ inlineSize(field_ty, schema), fty_fmt })
-    else
-        try writer.print(
-            \\  var x = rcv._tab.vector(o);
-            \\  x += @intCast(u32, j) * {};
-            \\  return {}.init(rcv._tab.bytes, x);
-            \\}}
-            \\return null;
-            \\}}
-            \\
-            \\
-        , .{ inlineSize(field_ty, schema), fty_fmt });
+    const indir_str = if (o2.IsStruct()) "" else "\n  x = rcv._tab.indirect(x);\n";
+    try writer.print(
+        \\  var x = rcv._tab.vector(o);
+        \\  // base={3} ele={4} fixed_len={5} base_size={6} ele_size={7}
+        \\  x += @intCast(u32, j) * {0};{2s}
+        \\  return {1}.init(rcv._tab.bytes, x);
+        \\}}
+        \\return null;
+        \\}}
+        \\
+        \\
+    , .{
+        inlineSize(field_ty, schema),
+        fty_fmt,
+        indir_str,
+        field_ty.BaseType(),
+        field_ty.Element(),
+        field_ty.FixedLength(),
+        field_ty.BaseSize(),
+        field_ty.ElementSize(),
+    });
 }
 
 /// Get the value of a vector's non-struct member.
@@ -2159,7 +2191,7 @@ fn genStruct(
     // Generate struct fields accessors
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
+        const field = o.Fields(getFieldIdxById(o, i).?).?;
         if (field.Deprecated()) continue;
 
         try genStructAccessor(o, field, schema, imports, writer);

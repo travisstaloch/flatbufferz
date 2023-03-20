@@ -60,7 +60,7 @@ pub const Type = struct {
     pub const BaseType = Table.ReadWithDefault(@This(), fb.idl.BaseType, 4, .{ .optional = .NONE });
     pub const Element = Table.ReadWithDefault(@This(), fb.idl.BaseType, 6, .{ .optional = .NONE });
     pub const Index = Table.ReadWithDefault(@This(), i32, 8, .{ .optional = -1 });
-    pub const FixedLength = Table.ReadWithDefault(@This(), u16, 10, 0);
+    pub const FixedLength = Table.ReadWithDefault(@This(), u16, 10, .{ .optional = 0 });
     pub const BaseSize = Table.ReadWithDefault(@This(), u32, 12, .{ .optional = 4 });
     pub const ElementSize = Table.ReadWithDefault(@This(), u32, 14, .{ .optional = 0 });
 };

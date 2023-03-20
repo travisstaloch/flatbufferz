@@ -5,6 +5,7 @@ pub const PackError = error{} ||
 
 pub const PackOptions = struct {
     allocator: ?std.mem.Allocator = null,
+    // TODO add dupe_strings: bool,
 };
 
 pub fn todo(comptime fmt: []const u8, args: anytype) noreturn {

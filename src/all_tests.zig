@@ -803,6 +803,27 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
     try testForMutatedValues(t);
 }
 
+fn checkGetRootAsForNonRootTable(alloc: mem.Allocator) !void {
+    var b = Builder.init(alloc);
+    defer {
+        b.deinit();
+        b.bytes.deinit(alloc);
+    }
+    const str = try b.createString("MyStat");
+    try Stat.Start(&b);
+    try Stat.AddId(&b, str);
+    try Stat.AddVal(&b, 12345678);
+    try Stat.AddCount(&b, 12345);
+    const stat_end = try Stat.End(&b);
+    try b.finish(stat_end);
+
+    const stat = Stat.GetRootAs(b.bytes.items, b.head);
+
+    try testing.expectEqualStrings("MyStat", stat.Id());
+    try testing.expectEqual(@as(i64, 12345678), stat.Val());
+    try testing.expectEqual(@as(usize, 12345), stat.Count());
+}
+
 /// checks that the table accessors work as expected.
 fn checkTableAccessors(alloc: mem.Allocator) !void {
     // test struct accessor
@@ -1104,13 +1125,16 @@ fn checkObjectAPI(
 }
 
 const talloc = testing.allocator;
-test "Object API" {
+test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
     // expected bytes (does not use any schema):
     try checkByteLayout(talloc);
     try checkMutateMethods(talloc);
 
+    // Verify that GetRootAs works for non-root tables
+    try checkGetRootAsForNonRootTable(talloc);
     try checkTableAccessors(talloc);
+
     // Verify that using the generated code builds a buffer without
     // returning errors:
     const gen_off = try checkGeneratedBuild(talloc, false, std.log.err);

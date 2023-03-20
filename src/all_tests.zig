@@ -15,6 +15,7 @@ const Vec3 = gen.MyGame_Example_Vec3.Vec3;
 const Color = gen.MyGame_Example_Color.Color;
 const Any = gen.MyGame_Example_Any.Any;
 const Stat = gen.MyGame_Example_Stat.Stat;
+const InParentNamespace = gen.MyGame_InParentNamespace.InParentNamespace;
 const Fail = fn (comptime []const u8, anytype) void;
 
 // build an example Monster. returns (buf,offset)
@@ -1147,6 +1148,52 @@ fn checkCreateByteVector(alloc: mem.Allocator) !void {
     }
 }
 
+fn checkParentNamespace(alloc: mem.Allocator) !void {
+    // create monster with an empty parent namespace field
+    const empty = blk: {
+        var builder = Builder.init(alloc);
+        defer builder.deinitAll();
+
+        try Monster.Start(&builder);
+        const m = try Monster.End(&builder);
+        try builder.finish(m);
+
+        break :blk try alloc.dupe(u8, builder.finishedBytes());
+    };
+    defer alloc.free(empty);
+
+    // create monster with a non-empty parent namespace field
+    const nonempty = blk: {
+        var builder = Builder.init(alloc);
+        defer builder.deinitAll();
+
+        try InParentNamespace.Start(&builder);
+        const pn = try InParentNamespace.End(&builder);
+
+        try Monster.Start(&builder);
+
+        try Monster.AddParentNamespaceTest(&builder, pn);
+        const m = try Monster.End(&builder);
+
+        try builder.finish(m);
+
+        break :blk try alloc.dupe(u8, builder.finishedBytes());
+    };
+    defer alloc.free(nonempty);
+
+    // read monster with empty parent namespace field
+    {
+        const m = Monster.GetRootAs(empty, 0);
+        try testing.expect(m.ParentNamespaceTest() == null);
+    }
+
+    // read monster with non-empty parent namespace field
+    {
+        const m = Monster.GetRootAs(nonempty, 0);
+        try testing.expect(m.ParentNamespaceTest() != null);
+    }
+}
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1192,4 +1239,7 @@ test "all" {
 
     // Check Builder.CreateByteVector
     try checkCreateByteVector(talloc);
+
+    // Check a parent namespace import
+    try checkParentNamespace(talloc);
 }

@@ -2,17 +2,14 @@
 
 # About
 
-Generate zig code from flatbuffer schema files which can de/serialize flatbuffer messages. Depends on flatc to parse .fbs files.
+Generate zig code from flatbuffer schema files which can de/serialize flatbuffer messages. Depends on packaged flatc to parse .fbs files.
+
+Developed against zig version `0.11.0-dev.1987+a2c6ecd6d`
 
 # Usage
 
-First install `flatc`:
-```console
-sudo apt install flatbuffers-compiler
-```
-or [download a release](https://github.com/google/flatbuffers/releases)
+Currently this project packages `flatc` in src/deps and thus depends on system installed cmake and c++ compiler.  It is planned to remove these dependencies and use zig to build the flatc compiler once the zig package manager gains better support for this.
 
-Once you have `flatc` in your `$PATH`
 ```console
 zig build
 ```
@@ -31,7 +28,7 @@ zig-out/bin/flatc-zig -o gen -I examples/includes examples/test.fbs
 ### compile from .bfbs files
 Optionally use `flatc` to generate a binary schema (.bfbs) from a schema (.fbs) files:
 ```console
-flatc -b --schema --bfbs-comments --bfbs-builtins --bfbs-gen-embed -I examples/includes -o gen/examples examples/test.fbs
+src/deps/google-flatbuffers/build/flatc -b --schema --bfbs-comments --bfbs-builtins --bfbs-gen-embed -I examples/includes -o gen/examples examples/test.fbs
 ```
 Use `flatc-zig` to generate zig files from binary schema (.bfbs) files:
 ```

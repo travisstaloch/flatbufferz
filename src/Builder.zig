@@ -65,6 +65,14 @@ pub fn deinit(b: *Builder) void {
     b.vtables.deinit(b.alloc);
 }
 
+/// deinit `shared_strings`, `vtable`, `vtables` and `bytes`.
+pub fn deinitAll(b: *Builder) void {
+    b.shared_strings.deinit(b.alloc);
+    b.vtable.deinit(b.alloc);
+    b.vtables.deinit(b.alloc);
+    b.bytes.deinit(b.alloc);
+}
+
 fn debug(b: Builder, comptime fmt: []const u8, args: anytype) void {
     // std.log.debug(
     //     fmt ++ "bytes={any}, minalign={}, vtable={any}, bject_end=={}, vtables={any}, head={}, nested={}, finished={}",
@@ -395,14 +403,14 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     b.assertNotNested();
     b.nested = true;
 
-    try b.prep(size_u32, v.len * size_byte);
+    try b.prep(size_u32, @intCast(i32, v.len * size_byte));
 
     const l = @intCast(u32, v.len);
 
     b.head -= l;
-    std.mem.copy(b.bytes.items[b.head .. b.head + l], v);
+    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], v);
 
-    return b.endVector(v.len);
+    return b.endVector(@intCast(u32, v.len));
 }
 
 fn assertNested(b: *Builder) void {

@@ -89,10 +89,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     var i: usize = 0;
     { // test 1: numbers
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try check(&[_]u8{}, b, &i);
         try b.prepend(bool, true);
@@ -112,20 +109,14 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 1b: numbers 2
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try b.prepend(u64, 0x1122334455667788);
         try check(&[_]u8{ 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }, b, &i);
     }
     { // test 2: 1xbyte vector
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try check(&[_]u8{}, b, &i);
         _ = try b.startVector(fb.Builder.size_byte, 1, 1);
@@ -137,10 +128,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 3: 2xbyte vector
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 2, 1);
         try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
@@ -153,10 +141,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 3b: 11xbyte vector matches builder size
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 8, 1);
         var start = std.ArrayList(u8).init(alloc);
@@ -174,10 +159,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 4: 1xuint16 vector
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_u16, 1, 1);
         try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
@@ -189,10 +171,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 5: 2xuint16 vector
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_u16, 2, 1);
         try check(&[_]u8{}, b, &i); // align to 4byte
@@ -206,10 +185,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 6: CreateString
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.createString("foo");
         try check(&[_]u8{ 3, 0, 0, 0, 'f', 'o', 'o', 0 }, b, &i); // 0-terminated, no pa
@@ -222,10 +198,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 6b: CreateString unicode
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         // These characters are chinese from blog.golang.org/strings
         // We use escape codes here so that editors without unicode support
@@ -240,10 +213,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 6c: CreateByteString
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.createByteString("foo");
         try check(&[_]u8{ 3, 0, 0, 0, 'f', 'o', 'o', 0 }, b, &i); // 0-terminated, no pa
@@ -255,10 +225,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 7: empty vtable
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try b.startObject(0);
         try check(&[_]u8{}, b, &i);
@@ -267,10 +234,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 8: vtable with one true bool
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try check(&[_]u8{}, b, &i);
         try b.startObject(1);
@@ -288,10 +252,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 9: vtable with one default bool
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try check(&[_]u8{}, b, &i);
         try b.startObject(1);
@@ -307,10 +268,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 10: vtable with one int16
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try b.startObject(1);
         try b.prependSlot(i16, 0, 0x789A, 0);
@@ -326,10 +284,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 11: vtable with two int16
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try b.startObject(2);
         try b.prependSlot(i16, 0, 0x3456, 0);
@@ -347,10 +302,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 12: vtable with int16 and bool
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         try b.startObject(2);
         try b.prependSlot(i16, 0, 0x3456, 0);
@@ -369,10 +321,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 12: vtable with empty vector
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 0, 1);
         const vecend = b.endVector(0);
@@ -391,10 +340,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 12b: vtable with empty vector of byte and some scalars
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 0, 1);
         const vecend = b.endVector(0);
@@ -415,10 +361,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 13: vtable with 1 int16 and 2-vector of int16
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_i16, 2, 1);
         try b.prepend(i16, 0x1234);
@@ -444,10 +387,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 14: vtable with 1 struct of 1 int8, 1 int16, 1 int32
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(1);
         try b.prep(4 + 4 + 4, 0);
@@ -473,10 +413,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 15: vtable with 1 vector of 2 struct of 2 int8
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_i8 * 2, 2, 1);
         try b.prepend(i8, 33);
@@ -502,10 +439,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 16: table with some elements
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(2);
         try b.prependSlot(i8, 0, 33, 0);
@@ -527,10 +461,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 17: one unfinished table and one finished table
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(2);
         try b.prependSlot(i8, 0, 33, 0);
@@ -571,10 +502,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 18: a bunch of bools
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(8);
         try b.prependSlot(bool, 0, true, false);
@@ -613,10 +541,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
     { // test 19: three bools
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(3);
         try b.prependSlot(bool, 0, true, false);
@@ -643,10 +568,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
 
     { // test 20: some floats
         var b = Builder.init(alloc);
-        defer {
-            b.deinit();
-            b.bytes.deinit(alloc);
-        }
+        defer b.deinitAll();
 
         _ = try b.startObject(1);
         try b.prependSlot(f32, 0, 1.0, 0.0);
@@ -673,10 +595,7 @@ fn calcUOffsetT(vtableOffset: u16, t: fb.Table) u16 {
 /// check all mutate methods one by one
 fn checkMutateMethods(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
-    defer {
-        b.deinit();
-        b.bytes.deinit(alloc);
-    }
+    defer b.deinitAll();
 
     try b.startObject(15);
     try b.prependSlot(bool, 0, true, false);
@@ -805,10 +724,8 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
 
 fn checkGetRootAsForNonRootTable(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
-    defer {
-        b.deinit();
-        b.bytes.deinit(alloc);
-    }
+    defer b.deinitAll();
+
     const str = try b.createString("MyStat");
     try Stat.Start(&b);
     try Stat.AddId(&b, str);
@@ -1111,10 +1028,8 @@ fn checkObjectAPI(
     monster.nan_default = 0.0;
 
     var builder = fb.Builder.init(alloc);
-    defer {
-        builder.deinit();
-        builder.bytes.deinit(alloc);
-    }
+    defer builder.deinitAll();
+
     try builder.finish(try monster.pack(&builder, .{ .allocator = alloc }));
     const m = Monster.GetRootAs(builder.finishedBytes(), 0);
     var monster2 = try MonsterT.unpack(m, .{ .allocator = alloc });
@@ -1127,10 +1042,7 @@ fn checkObjectAPI(
 /// verifies that vtables are deduplicated.
 fn checkVtableDeduplication(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
-    defer {
-        b.deinit();
-        b.bytes.deinit(alloc);
-    }
+    defer b.deinitAll();
 
     try b.startObject(4);
     try b.prependSlot(u8, 0, 0, 0);
@@ -1192,6 +1104,49 @@ fn checkVtableDeduplication(alloc: mem.Allocator) !void {
     try testTable(table2, 0, 77, 88, 99);
 }
 
+// checks that the generated enum names are correct.
+fn checkEnumNamesAndValues() !void {
+    {
+        const fields = comptime std.meta.fields(Any.Tag);
+        try testing.expectEqualStrings("NONE", fields[0].name);
+        try testing.expectEqual(@enumToInt(Any.Tag.NONE), fields[0].value);
+        try testing.expectEqualStrings("Monster", fields[1].name);
+        try testing.expectEqual(@enumToInt(Any.Tag.Monster), fields[1].value);
+        try testing.expectEqualStrings("TestSimpleTableWithEnum", fields[2].name);
+        try testing.expectEqual(@enumToInt(Any.Tag.TestSimpleTableWithEnum), fields[2].value);
+        try testing.expectEqualStrings("MyGame_Example2_Monster", fields[3].name);
+        try testing.expectEqual(@enumToInt(Any.Tag.MyGame_Example2_Monster), fields[3].value);
+    }
+    {
+        const fields = comptime std.meta.fields(Color);
+        try testing.expectEqualStrings("Red", fields[0].name);
+        try testing.expectEqual(@enumToInt(Color.Red), fields[0].value);
+        try testing.expectEqualStrings("Green", fields[1].name);
+        try testing.expectEqual(@enumToInt(Color.Green), fields[1].value);
+        try testing.expectEqualStrings("Blue", fields[2].name);
+        try testing.expectEqual(@enumToInt(Color.Blue), fields[2].value);
+    }
+}
+
+fn checkCreateByteVector(alloc: mem.Allocator) !void {
+    const raw: [30]u8 = std.simd.iota(u8, 30);
+
+    for (0..raw.len) |size| {
+        var b1 = Builder.init(alloc);
+        defer b1.deinitAll();
+        var b2 = Builder.init(alloc);
+        defer b2.deinitAll();
+        _ = try b1.startVector(1, @intCast(i32, size), 1);
+        var i = @intCast(isize, size) - 1;
+        while (i >= 0) : (i -= 1)
+            try b1.prepend(u8, raw[@bitCast(usize, i)]);
+
+        _ = b1.endVector(@intCast(u32, size));
+        _ = try b2.createByteVector(raw[0..size]);
+        try testing.expectEqualStrings(b1.bytes.items, b2.bytes.items);
+    }
+}
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1231,4 +1186,10 @@ test "all" {
 
     // Verify that vtables are deduplicated when written:
     try checkVtableDeduplication(talloc);
+
+    // Verify the enum names
+    try checkEnumNamesAndValues();
+
+    // Check Builder.CreateByteVector
+    try checkCreateByteVector(talloc);
 }

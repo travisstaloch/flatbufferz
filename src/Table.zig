@@ -307,3 +307,12 @@ pub fn getSlot(t: Table, comptime T: type, slot: u16, d: T) T {
     if (off == 0) return d;
     return t.read(T, t.pos + off);
 }
+
+// retrieves the T that the given vtable location
+// points to. If the vtable value is zero, the default value `d`
+// will be returned.
+pub fn getSlotOff(t: Table, comptime T: type, slot: u16, d: T) T {
+    const off = t.offset(slot);
+    if (off == 0) return d;
+    return @intCast(T, off);
+}

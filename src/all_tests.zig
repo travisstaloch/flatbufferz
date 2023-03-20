@@ -662,6 +662,147 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
     }
 }
 
+fn calcVOffsetT(slot: u16) u16 {
+    return (fb.encode.vtable_metadata_fields + slot) * fb.Builder.size_u16;
+}
+
+fn calcUOffsetT(vtableOffset: u16, t: fb.Table) u16 {
+    return @intCast(u16, t.pos) + t.offset(vtableOffset);
+}
+
+/// check all mutate methods one by one
+fn checkMutateMethods(alloc: mem.Allocator) !void {
+    var b = Builder.init(alloc);
+    defer {
+        b.deinit();
+        b.bytes.deinit(alloc);
+    }
+
+    try b.startObject(15);
+    try b.prependSlot(bool, 0, true, false);
+    try b.prependSlot(u8, 1, 1, 0);
+    try b.prependSlot(u8, 2, 2, 0);
+    try b.prependSlot(u16, 3, 3, 0);
+    try b.prependSlot(u32, 4, 4, 0);
+    try b.prependSlot(u64, 5, 5, 0);
+    try b.prependSlot(i8, 6, 6, 0);
+    try b.prependSlot(i16, 7, 7, 0);
+    try b.prependSlot(i32, 8, 8, 0);
+    try b.prependSlot(i64, 9, 9, 0);
+    try b.prependSlot(f32, 10, 10, 0);
+    try b.prependSlot(f64, 11, 11, 0);
+
+    try b.prependSlotUOff(12, 12, 0);
+    const uoVal = b.offset() - 12;
+
+    try b.prepend(u16, 13);
+    b.slot(13);
+
+    try b.prependSOff(14);
+    b.slot(14);
+    const soVal = @intCast(i32, b.offset() - 14);
+
+    const offset = try b.endObject();
+
+    var t = fb.Table{
+        .bytes = b.bytes.items,
+        .pos = @intCast(u32, b.bytes.items.len) - offset,
+    };
+
+    const testForOriginalValues = struct {
+        fn func(tb: fb.Table, uoVal_: u32, soVal_: i32) !void {
+            try testing.expect(tb.getSlot(bool, calcVOffsetT(0), true));
+            try testing.expectEqual(@as(u8, 1), tb.getSlot(u8, calcVOffsetT(1), 1));
+            try testing.expectEqual(@as(u8, 2), tb.getSlot(u8, calcVOffsetT(2), 2));
+            try testing.expectEqual(@as(u16, 3), tb.getSlot(u16, calcVOffsetT(3), 3));
+            try testing.expectEqual(@as(u32, 4), tb.getSlot(u32, calcVOffsetT(4), 4));
+            try testing.expectEqual(@as(u64, 5), tb.getSlot(u64, calcVOffsetT(5), 5));
+
+            try testing.expectEqual(@as(i8, 6), tb.getSlot(i8, calcVOffsetT(6), 6));
+            try testing.expectEqual(@as(i16, 7), tb.getSlot(i16, calcVOffsetT(7), 7));
+            try testing.expectEqual(@as(i32, 8), tb.getSlot(i32, calcVOffsetT(8), 8));
+            try testing.expectEqual(@as(i64, 9), tb.getSlot(i64, calcVOffsetT(9), 9));
+
+            try testing.expectEqual(@as(f32, 10), tb.getSlot(f32, calcVOffsetT(10), 10));
+            try testing.expectEqual(@as(f64, 11), tb.getSlot(f64, calcVOffsetT(11), 11));
+
+            try testing.expectEqual(uoVal_, tb.read(u32, calcUOffsetT(calcVOffsetT(12), tb)));
+            try testing.expectEqual(@as(u16, 13), tb.read(u16, calcUOffsetT(calcVOffsetT(13), tb)));
+            try testing.expectEqual(soVal_, tb.read(i32, calcUOffsetT(calcVOffsetT(14), tb)));
+        }
+    }.func;
+
+    const testMutability = struct {
+        fn func(tb: fb.Table) !void {
+            try testing.expect(tb.mutateSlot(bool, calcVOffsetT(0), false));
+            try testing.expect(tb.mutateSlot(u8, calcVOffsetT(1), 2));
+            try testing.expect(tb.mutateSlot(u8, calcVOffsetT(2), 4));
+            try testing.expect(tb.mutateSlot(u16, calcVOffsetT(3), 6));
+            try testing.expect(tb.mutateSlot(u32, calcVOffsetT(4), 8));
+            try testing.expect(tb.mutateSlot(u64, calcVOffsetT(5), 10));
+            try testing.expect(tb.mutateSlot(i8, calcVOffsetT(6), 12));
+            try testing.expect(tb.mutateSlot(i16, calcVOffsetT(7), 14));
+            try testing.expect(tb.mutateSlot(i32, calcVOffsetT(8), 16));
+            try testing.expect(tb.mutateSlot(i64, calcVOffsetT(9), 18));
+            try testing.expect(tb.mutateSlot(f32, calcVOffsetT(10), 20));
+            try testing.expect(tb.mutateSlot(f64, calcVOffsetT(11), 22));
+            try testing.expect(tb.mutate(u32, calcUOffsetT(calcVOffsetT(12), tb), 24));
+            try testing.expect(tb.mutate(u16, calcUOffsetT(calcVOffsetT(13), tb), 26));
+            try testing.expect(tb.mutate(i32, calcUOffsetT(calcVOffsetT(14), tb), 28));
+        }
+    }.func;
+
+    const testMutabilityWithoutSlot = struct {
+        fn func(tb: fb.Table) !void {
+            try testing.expect(!tb.mutateSlot(bool, calcVOffsetT(16), false));
+            try testing.expect(!tb.mutateSlot(u8, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(u8, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(u16, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(u32, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(u64, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(i8, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(i16, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(i32, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(i64, calcVOffsetT(16), 2));
+            try testing.expect(!tb.mutateSlot(f32, calcVOffsetT(160), 2));
+            try testing.expect(!tb.mutateSlot(f64, calcVOffsetT(161), 2));
+        }
+    }.func;
+
+    const testForMutatedValues = struct {
+        fn func(tb: fb.Table) !void {
+            try testing.expect(!tb.getSlot(bool, calcVOffsetT(0), false));
+            try testing.expectEqual(@as(u8, 2), tb.getSlot(u8, calcVOffsetT(1), 1));
+            try testing.expectEqual(@as(u8, 4), tb.getSlot(u8, calcVOffsetT(2), 1));
+            try testing.expectEqual(@as(u16, 6), tb.getSlot(u16, calcVOffsetT(3), 1));
+            try testing.expectEqual(@as(u32, 8), tb.getSlot(u32, calcVOffsetT(4), 1));
+            try testing.expectEqual(@as(u64, 10), tb.getSlot(u64, calcVOffsetT(5), 1));
+            try testing.expectEqual(@as(i8, 12), tb.getSlot(i8, calcVOffsetT(6), 1));
+            try testing.expectEqual(@as(i16, 14), tb.getSlot(i16, calcVOffsetT(7), 1));
+            try testing.expectEqual(@as(i32, 16), tb.getSlot(i32, calcVOffsetT(8), 1));
+            try testing.expectEqual(@as(i64, 18), tb.getSlot(i64, calcVOffsetT(9), 1));
+            try testing.expectEqual(@as(f32, 20), tb.getSlot(f32, calcVOffsetT(10), 1));
+            try testing.expectEqual(@as(f64, 22), tb.getSlot(f64, calcVOffsetT(11), 1));
+            try testing.expectEqual(@as(u32, 24), tb.read(u32, calcUOffsetT(calcVOffsetT(12), tb)));
+            try testing.expectEqual(@as(u16, 26), tb.read(u16, calcUOffsetT(calcVOffsetT(13), tb)));
+            try testing.expectEqual(@as(i32, 28), tb.read(i32, calcUOffsetT(calcVOffsetT(14), tb)));
+        }
+    }.func;
+
+    // make sure original values are okay
+    try testForOriginalValues(t, uoVal, soVal);
+
+    // try to mutate fields and check mutability
+    try testMutability(t);
+
+    // try to mutate fields and check mutability
+    // these have wrong slots so should fail
+    try testMutabilityWithoutSlot(t);
+
+    // test whether values have changed
+    try testForMutatedValues(t);
+}
+
 /// checks that the table accessors work as expected.
 fn checkTableAccessors(alloc: mem.Allocator) !void {
     // test struct accessor
@@ -949,7 +1090,10 @@ fn checkObjectAPI(
     monster.nan_default = 0.0;
 
     var builder = fb.Builder.init(alloc);
-    defer builder.deinit();
+    defer {
+        builder.deinit();
+        builder.bytes.deinit(alloc);
+    }
     try builder.finish(try monster.pack(&builder, .{ .allocator = alloc }));
     const m = Monster.GetRootAs(builder.finishedBytes(), 0);
     var monster2 = try MonsterT.unpack(m, .{ .allocator = alloc });
@@ -964,13 +1108,14 @@ test "Object API" {
     // Verify that the Go FlatBuffers runtime library generates the
     // expected bytes (does not use any schema):
     try checkByteLayout(talloc);
-    // try checkMutateMethods(talloc);
+    try checkMutateMethods(talloc);
 
     try checkTableAccessors(talloc);
     // Verify that using the generated code builds a buffer without
     // returning errors:
     const gen_off = try checkGeneratedBuild(talloc, false, std.log.err);
     const generated = gen_off[0];
+    defer talloc.free(generated);
     const off = gen_off[1];
 
     // Verify that the buffer generated by zig code is readable by the
@@ -978,4 +1123,17 @@ test "Object API" {
     try checkReadBuffer(talloc, generated, off, false, std.log.err);
     try checkMutateBuffer(talloc, generated, off, false, std.log.err);
     try checkObjectAPI(talloc, generated, off, false, std.log.err);
+
+    // Verify that the buffer generated by C++ code is readable by the
+    // generated zig code:
+    const monsterDataCpp = try std.fs.cwd().readFileAlloc(
+        talloc,
+        "examples/monsterdata_test.mon",
+        std.math.maxInt(u32),
+    );
+    defer talloc.free(monsterDataCpp);
+
+    try checkReadBuffer(talloc, monsterDataCpp, 0, false, std.log.err);
+    try checkMutateBuffer(talloc, monsterDataCpp, 0, false, std.log.err);
+    try checkObjectAPI(talloc, monsterDataCpp, 0, false, std.log.err);
 }

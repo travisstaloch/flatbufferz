@@ -229,7 +229,7 @@ pub fn union_(t: Table, off_: u32) Table {
     };
 }
 
-/// reads a T from t.bytes starting at "off". supports float and int Ts
+/// reads a T from t.bytes starting at "off". supports float, int and enum Ts
 pub fn read(t: Table, comptime T: type, off: u32) T {
     return encode.read(T, t.bytes[off..]);
 }
@@ -297,4 +297,13 @@ pub fn mutateSlot(t: Table, comptime T: type, slot: u16, n: T) bool {
         _ = t.mutate(T, t.pos + off, n);
         return true;
     } else return false;
+}
+
+// retrieve the T that the given vtable location
+// points to. If the vtable value is zero, the default value `d`
+// will be returned.
+pub fn getSlot(t: Table, comptime T: type, slot: u16, d: T) T {
+    const off = t.offset(slot);
+    if (off == 0) return d;
+    return t.read(T, t.pos + off);
 }

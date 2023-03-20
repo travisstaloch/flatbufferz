@@ -555,7 +555,7 @@ pub fn vtableEqual(a: []const u32, objectStart: u32, b: []const u8) bool {
     return true;
 }
 
-/// prepends a bool to the Builder buffer.
+/// prepends a T to the Builder buffer.
 /// Aligns and checks for space.
 pub fn prepend(b: *Builder, comptime T: type, x: T) !void {
     try b.prep(@sizeOf(T), 0);

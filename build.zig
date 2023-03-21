@@ -50,7 +50,9 @@ pub fn build(b: *std.Build) !void {
     const gen_step = try sdk.GenStep.create(b, exe, &.{
         "examples/sample.fbs",
         "examples/monster_test.fbs",
-    }, &.{ "-I", "examples/include_test" });
+        "examples/include_test/order.fbs",
+        "examples/include_test/sub/no_namespace.fbs",
+    }, &.{ "-I", "examples/include_test", "-I", "examples/include_test/sub" });
     const gen_mod = b.createModule(.{
         .source_file = gen_step.module.source_file,
         .dependencies = &.{.{ .name = "flatbufferz", .module = lib_mod }},

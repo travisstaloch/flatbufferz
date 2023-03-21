@@ -16,7 +16,12 @@ const Color = gen.MyGame_Example_Color.Color;
 const Any = gen.MyGame_Example_Any.Any;
 const Stat = gen.MyGame_Example_Stat.Stat;
 const InParentNamespace = gen.MyGame_InParentNamespace.InParentNamespace;
+const PizzaT = gen.Pizza.PizzaT;
+const FoodT = gen.order_Food.FoodT;
+const Food = gen.order_Food.Food;
+
 const Fail = fn (comptime []const u8, anytype) void;
+const expectEqualDeep = @import("testing.zig").expectEqualDeep;
 
 // build an example Monster. returns (buf,offset)
 fn checkGeneratedBuild(
@@ -1037,7 +1042,7 @@ fn checkObjectAPI(
     defer monster2.deinit(alloc);
     // TODO use std.testing.expectEqualDeep() once
     // https://github.com/ziglang/zig/pull/14981 is merged
-    try @import("testing.zig").expectEqualDeep(monster, monster2);
+    try expectEqualDeep(monster, monster2);
 }
 
 /// verifies that vtables are deduplicated.
@@ -1194,6 +1199,23 @@ fn checkParentNamespace(alloc: mem.Allocator) !void {
     }
 }
 
+fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
+    const size = 13;
+    // Order a pizza with specific size
+    var builder = Builder.init(alloc);
+    defer builder.deinitAll();
+
+    var ordered_pizza = PizzaT{ .size = size };
+    const food = FoodT{ .pizza = &ordered_pizza };
+    try builder.finish(try food.pack(&builder, .{ .allocator = alloc }));
+
+    // Receive order
+    const received_food = Food.GetRootAs(builder.finishedBytes(), 0);
+    const received_pizza = try PizzaT.unpack(received_food.Pizza_().?, .{ .allocator = alloc });
+
+    try expectEqualDeep(ordered_pizza, received_pizza);
+}
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1242,4 +1264,7 @@ test "all" {
 
     // Check a parent namespace import
     try checkParentNamespace(talloc);
+
+    // Check a no namespace import
+    try checkNoNamespaceImport(talloc);
 }

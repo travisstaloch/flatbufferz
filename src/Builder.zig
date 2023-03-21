@@ -86,8 +86,8 @@ fn debug(b: Builder, comptime fmt: []const u8, args: anytype) void {
 /// reuse of a Builder. It also resets bookkeeping data.
 pub fn reset(b: *Builder) void {
     b.bytes.expandToCapacity();
-    b.vtables.len = 0;
-    b.vtable.len = 0;
+    b.vtables.items.len = 0;
+    b.vtable.items.len = 0;
     b.shared_strings.clearRetainingCapacity();
     b.head = @intCast(u32, b.bytes.items.len);
     b.minalign = 1;

@@ -15,6 +15,7 @@ const Vec3 = gen.MyGame_Example_Vec3.Vec3;
 const Color = gen.MyGame_Example_Color.Color;
 const Any = gen.MyGame_Example_Any.Any;
 const Stat = gen.MyGame_Example_Stat.Stat;
+const StatT = gen.MyGame_Example_Stat.StatT;
 const InParentNamespace = gen.MyGame_InParentNamespace.InParentNamespace;
 const PizzaT = gen.Pizza.PizzaT;
 const FoodT = gen.order_Food.FoodT;
@@ -1447,6 +1448,77 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
     try testing.expectEqual(OptionalByte.Two, obj.default_enum);
 }
 
+fn checkByKey(alloc: mem.Allocator) !void {
+    var b = Builder.init(alloc);
+    defer b.deinitAll();
+    const name = try b.createString("Boss");
+
+    const slime = MonsterT{ .name = "Slime" };
+    const pig = MonsterT{ .name = "Pig" };
+    const slimeBoss = MonsterT{ .name = "SlimeBoss" };
+    const mushroom = MonsterT{ .name = "Mushroom" };
+    const ironPig = MonsterT{ .name = "Iron Pig" };
+
+    var monsterOffsets: [5]u32 = .{
+        try slime.pack(&b, .{}),
+        try pig.pack(&b, .{}),
+        try slimeBoss.pack(&b, .{}),
+        try mushroom.pack(&b, .{}),
+        try ironPig.pack(&b, .{}),
+    };
+    const testarrayoftables =
+        try b.createVectorOfSortedTables(&monsterOffsets, Monster.KeyCompare);
+
+    const str = StatT{ .id = "Strength", .count = 42 };
+    const luk = StatT{ .id = "Luck", .count = 51 };
+    const hp = StatT{ .id = "Health", .count = 12 };
+    // Test default count value of 0
+    const mp = StatT{ .id = "Mana" };
+
+    var statOffsets: [4]u32 = .{
+        try str.pack(&b, .{}),
+        try luk.pack(&b, .{}),
+        try hp.pack(&b, .{}),
+        try mp.pack(&b, .{}),
+    };
+    const scalarKeySortedTablesOffset =
+        try b.createVectorOfSortedTables(&statOffsets, Stat.KeyCompare);
+
+    try Monster.Start(&b);
+    try Monster.AddName(&b, name);
+    try Monster.AddTestarrayoftables(&b, testarrayoftables);
+    try Monster.AddScalarKeySortedTables(&b, scalarKeySortedTablesOffset);
+    const moff = try Monster.End(&b);
+    try b.finish(moff);
+
+    const monster = Monster.GetRootAs(b.bytes.items, b.head);
+    var slimeMon: Monster = undefined;
+    try testing.expect(monster.TestarrayoftablesByKey(&slimeMon, slime.name));
+    var mushroomMon: Monster = undefined;
+    try testing.expect(monster.TestarrayoftablesByKey(&mushroomMon, mushroom.name));
+    var slimeBossMon: Monster = undefined;
+    try testing.expect(monster.TestarrayoftablesByKey(&slimeBossMon, slimeBoss.name));
+
+    var strStat: Stat = undefined;
+    try testing.expect(monster.ScalarKeySortedTablesByKey(&strStat, str.count));
+    var lukStat: Stat = undefined;
+    try testing.expect(monster.ScalarKeySortedTablesByKey(&lukStat, luk.count));
+    var mpStat: Stat = undefined;
+    try testing.expect(monster.ScalarKeySortedTablesByKey(&mpStat, mp.count));
+
+    try testing.expectEqualStrings("Boss", monster.Name());
+    try testing.expectEqualStrings(slime.name, slimeMon.Name());
+    try testing.expectEqualStrings(mushroom.name, mushroomMon.Name());
+    try testing.expectEqualStrings(slimeBoss.name, slimeBossMon.Name());
+    try testing.expectEqualStrings(str.id, strStat.Id());
+    try testing.expectEqual(str.count, strStat.Count());
+    try testing.expectEqualStrings(luk.id, lukStat.Id());
+    try testing.expectEqual(luk.count, lukStat.Count());
+    try testing.expectEqualStrings(mp.id, mpStat.Id());
+    // Use default count value as key
+    try testing.expectEqual(@as(u16, 0), mpStat.Count());
+}
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1504,4 +1576,7 @@ test "all" {
 
     // Check that optional scalars works
     try checkOptionalScalars(talloc);
+
+    // Check that getting vector element by key works
+    try checkByKey(talloc);
 }

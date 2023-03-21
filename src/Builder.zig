@@ -332,14 +332,14 @@ pub fn endVector(b: *Builder, vector_num_elems: u32) u32 {
 }
 
 /// serializes slice of table offsets into a vector.
-pub fn createVectorOfTables(b: *Builder, offsets: []const u32) u32 {
+pub fn createVectorOfTables(b: *Builder, offsets: []const u32) !u32 {
     b.assertNotNested();
-    b.StartVector(4, offsets.len, 4);
+    _ = try b.startVector(4, @intCast(i32, offsets.len), 4);
     var i = @bitCast(isize, offsets.len) - 1;
     while (i >= 0) : (i -= 1)
-        b.prependUOff(offsets[@bitCast(usize, i)]);
+        _ = try b.prependUOff(offsets[@bitCast(usize, i)]);
 
-    return b.endVector(offsets.len);
+    return b.endVector(@intCast(u32, offsets.len));
 }
 
 const KeyCompare = fn (u32, u32, []u8) bool;
@@ -347,14 +347,16 @@ const KeyCompare = fn (u32, u32, []u8) bool;
 pub fn createVectorOfSortedTables(
     b: *Builder,
     offsets: []u32,
-    keyCompare: KeyCompare,
-) u32 {
-    // sort.Slice(offsets, func(i: u32, j: u32) bool {
-    //     return keyCompare(offsets[i], offsets[j], b.bytes);
-    // });
-    _ = keyCompare;
-    todo("sort", .{});
-    return b.CreateVectorOfTables(offsets);
+    comptime keyCompare: KeyCompare,
+) !u32 {
+    const cmp = struct {
+        fn cmp(context: []u8, i: u32, j: u32) bool {
+            return keyCompare(i, j, context);
+        }
+    }.cmp;
+
+    std.sort.sort(u32, offsets, b.bytes.items, cmp);
+    return b.createVectorOfTables(offsets);
 }
 
 /// Checks if 's' is already written to the buffer before calling createString()

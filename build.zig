@@ -42,7 +42,6 @@ pub fn build(b: *std.Build) !void {
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
 
-    run_cmd.condition = .always;
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
@@ -71,7 +70,7 @@ pub fn build(b: *std.Build) !void {
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+    test_step.dependOn(&exe_tests.run().step);
 
     // TODO remove this flag.
     const build_sample = b.option(
@@ -98,7 +97,6 @@ pub fn build(b: *std.Build) !void {
         if (b.args) |args| {
             sample_run_cmd.addArgs(args);
         }
-        sample_run_cmd.condition = .always;
         const sample_run_step = b.step("run-sample", "Run the app");
         sample_run_step.dependOn(&sample_run_cmd.step);
     }

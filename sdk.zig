@@ -32,12 +32,12 @@ pub const GenStep = struct {
         );
 
         self.* = GenStep{
-            .step = std.build.Step.init(
-                .custom,
-                "build-template",
-                b.allocator,
-                make,
-            ),
+            .step = std.build.Step.init(.{
+                .id = .custom,
+                .name = "build-template",
+                .owner = b,
+                .makeFn = make,
+            }),
             .b = b,
             .cache_path = cache_path,
             .lib_file = .{
@@ -70,7 +70,7 @@ pub const GenStep = struct {
     /// iterate over all files in self.cache_path
     /// and create a 'lib.zig' file at self.lib_file.path which exports all
     /// generated .fb.zig files
-    fn make(step: *std.build.Step) !void {
+    fn make(step: *std.build.Step, _: *std.Progress.Node) !void {
         const self = @fieldParentPtr(GenStep, "step", step);
 
         var file = try std.fs.cwd().createFile(self.lib_file.path.?, .{});

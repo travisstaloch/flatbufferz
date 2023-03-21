@@ -1290,7 +1290,12 @@ fn getVectorLen(o: Object, field: Field, imports: *TypenameSet, writer: anytype)
 }
 
 /// Get a [ubyte] vector as a byte slice.
-fn getUByteSlice(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
+fn getUByteSlice(
+    o: Object,
+    field: Field,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     try writer.print(
         \\pub fn {s}Bytes(rcv: {s}) []const u8
@@ -1923,6 +1928,47 @@ fn getMemberOfVectorOfStruct(
     });
 }
 
+fn getMemberOfVectorOfStructByKey(
+    o: Object,
+    field: Field,
+    key_field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    const fname_camel_upper = camelUpperFmt(field.Name(), imports);
+    const field_ty = field.Type().?;
+    const olastname = lastName(o.Name());
+    const ty_fmt = TypeFmt.init(
+        field_ty,
+        schema,
+        .keep_ns,
+        imports,
+        .{ .is_optional = field.Optional() },
+    );
+    const keyty_fmt = TypeFmt.init(
+        key_field.Type().?,
+        schema,
+        .keep_ns,
+        imports,
+        .{ .is_optional = key_field.Optional() },
+    );
+
+    try writer.print(
+        \\pub fn {0}ByKey(rcv: {1s}, obj: *{2}, key: {3}) bool 
+    , .{ fname_camel_upper, olastname, ty_fmt, keyty_fmt });
+    try offsetPrefix(field, writer);
+    try writer.print(
+        \\const x = rcv._tab.vector(o);
+        \\return obj.LookupByKey(key, x, rcv._tab.bytes);
+        \\}}
+        \\return false;
+        \\}}
+        \\
+        \\
+    , .{});
+}
+
 /// Get the value of a vector's non-struct member.
 fn getMemberOfVectorOfNonStruct(
     o: Object,
@@ -2181,9 +2227,24 @@ fn genStructAccessor(
                     // TODO(michaeltle): Support querying fixed struct by key.
                     // Currently, we only support keyed tables.
                     const struct_def = schema.Objects(@bitCast(u32, field_ty.Index())).?;
-                    if (!struct_def.IsStruct() and field.Key()) {
-                        // try getMemberOfVectorOfStructByKey(o, field, writer);
-                        todo("getMemberOfVectorOfStructByKey", .{});
+                    if (!struct_def.IsStruct()) {
+                        const mkey_field = blk: {
+                            var i: u32 = 0;
+                            while (i < struct_def.FieldsLen()) : (i += 1) {
+                                const f = struct_def.Fields(i).?;
+                                if (f.Key()) break :blk f;
+                            }
+                            break :blk null;
+                        };
+                        if (mkey_field) |key_field|
+                            try getMemberOfVectorOfStructByKey(
+                                o,
+                                field,
+                                key_field,
+                                schema,
+                                imports,
+                                writer,
+                            );
                     }
                 } else {
                     try getMemberOfVectorOfNonStruct(
@@ -2349,8 +2410,8 @@ fn genStruct(
         // TODO(michaeltle): Support querying fixed struct by key. Currently,
         // we only support keyed tables.
         if (!o.IsStruct() and field.Key()) {
-            try genKeyCompare(o, field, writer);
-            try genLookupByKey(o, field, writer);
+            try genKeyCompare(o, field, imports, writer);
+            try genLookupByKey(o, field, schema, imports, writer);
         }
     }
 
@@ -2369,28 +2430,93 @@ fn genStruct(
     );
 }
 
-fn genKeyCompare(o: Object, _: Field, writer: anytype) !void {
-    // const fname = fieldNameFmt(field.Name(), imports);
-    // const fname_camel_upper = camelUpperFmt(field.Name(), imports);
+fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
+    const fname_camel_upper = camelUpperFmt(field.Name(), imports);
+    const field_ty = field.Type().?;
+    const base_ty = field_ty.BaseType();
     try writer.print(
-        \\pub fn KeyCompare(rcv: {s}) u32 {{
-        \\_ = rcv;
-        \\// TODO
+        \\pub fn KeyCompare(o1: u32, o2: u32, buf: []u8) bool {{
+        \\const obj1 = {0s}.init(buf, @intCast(u32, buf.len) - o1);
+        \\const obj2 = {0s}.init(buf, @intCast(u32, buf.len) - o2);
+        \\
+    , .{lastName(o.Name())});
+
+    if (base_ty == .STRING)
+        try writer.print(
+            \\return std.mem.lessThan(u8, obj1.{0}(), obj2.{0}());
+            \\
+        , .{fname_camel_upper})
+    else
+        try writer.print(
+            \\return obj1.{0}() < obj2.{0}();
+            \\
+        , .{fname_camel_upper});
+    try writer.print(
         \\}}
         \\
         \\
-    , .{lastName(o.Name())});
+    , .{});
 }
 
-fn genLookupByKey(o: Object, _: Field, writer: anytype) !void {
+fn genLookupByKey(
+    o: Object,
+    field: Field,
+    schema: Schema,
+    imports: *TypenameSet,
+    writer: anytype,
+) !void {
+    const fname_camel_upper = camelUpperFmt(field.Name(), imports);
+    const field_ty = field.Type().?;
+    const base_ty = field_ty.BaseType();
+    const olastname = lastName(o.Name());
+    const ty_fmt = TypeFmt.init(
+        field_ty,
+        schema,
+        .keep_ns,
+        imports,
+        .{ .is_optional = field.Optional() },
+    );
+
     try writer.print(
-        \\pub fn LookupByKey(rcv: {s}) u32 {{
-        \\_ = rcv;
-        \\// TODO
+        \\pub fn LookupByKey(rcv: *{s}, key: {}, vector_loc: u32, buf: []u8) bool {{
+        \\var span = fb.encode.read(u32, buf[vector_loc - 4..][0..4]);
+        \\var start: u32 = 0;
+        \\
+    , .{ olastname, ty_fmt });
+    try writer.print(
+        \\while (span != 0) {{
+        \\var middle = span / 2;
+        \\const table_off = fb.getIndirectOffset(buf, vector_loc + 4 * (start + middle));
+        \\const obj = {s}.init(buf, table_off);
+        \\
+    , .{olastname});
+    if (base_ty == .STRING) try writer.print(
+        "const order = std.mem.order(u8, obj.{}(), key);\n",
+        .{fname_camel_upper},
+    ) else {
+        try writer.print(
+            \\const order = std.math.order(obj.{}(), key);
+            \\
+        , .{fname_camel_upper});
+    }
+
+    try writer.print(
+        \\if (order == .gt) {{
+        \\span = middle; 
+        \\}} else if (order == .lt) {{ 
+        \\middle += 1;
+        \\start += middle;
+        \\span -= middle;
+        \\}} else {{
+        \\rcv.* = {s}.init(buf, table_off);
+        \\return true;
+        \\}}
+        \\}}
+        \\return false;
         \\}}
         \\
         \\
-    , .{lastName(o.Name())});
+    , .{olastname});
 }
 
 pub fn generate(

@@ -4,11 +4,11 @@
 
 Generate zig code from flatbuffer schema files which can de/serialize flatbuffer messages. Depends on packaged flatc to parse .fbs files.
 
-Developed against zig version `0.11.0-dev.1987+a2c6ecd6d`
+Developed against zig version `0.11.0-dev.2213+515e1c93e`
+
+This project depends on packaged `flatc` compiler @v23.3.3, built with zig using [a fork of google/flatbuffers](https://github.com/travisstaloch/flatbuffers).
 
 # Usage
-
-Currently this project packages `flatc` in src/deps and thus depends on system installed cmake and c++ compiler.  It is planned to remove these dependencies and use zig to build the flatc compiler once the zig package manager gains better support for this.
 
 ```console
 zig build
@@ -26,9 +26,9 @@ zig-out/bin/flatc-zig -o gen -I examples/includes examples/test.fbs
 ```
 
 ### compile from .bfbs files
-Optionally use `flatc` to generate a binary schema (.bfbs) from a schema (.fbs) files:
+Optionally use packaged `flatc` to generate a binary schema (.bfbs) from a schema (.fbs) files:
 ```console
-src/deps/google-flatbuffers/build/flatc -b --schema --bfbs-comments --bfbs-builtins --bfbs-gen-embed -I examples/includes -o gen/examples examples/test.fbs
+zig build flatc -- -b --schema --bfbs-comments --bfbs-builtins --bfbs-gen-embed -I examples/includes -o gen/examples examples/test.fbs
 ```
 Use `flatc-zig` to generate zig files from binary schema (.bfbs) files:
 ```
@@ -56,7 +56,7 @@ files depend on a "flatbufferz" module which can be provided by:
     .dependencies = .{
         .flatbufferz = .{
             // note: you may need to change this url commit hash
-            .url = "https://github.com/travisstaloch/flatbufferz/archive/bf3c1f32abc977bdb73e1ddc153500f6c866914f.tar.gz",
+            .url = "https://github.com/travisstaloch/flatbufferz/archive/f8c035f29893a2b30902ed61b0d8702e8f52f435.tar.gz",
         },
     }
 }

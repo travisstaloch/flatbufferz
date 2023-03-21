@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const zig_clap = zig_clap_pkg.module("clap");
+
     const exe = b.addExecutable(.{
         .name = "flatc-zig",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -39,9 +40,8 @@ pub fn build(b: *std.Build) !void {
 
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    if (b.args) |args| run_cmd.addArgs(args);
+
     run_cmd.condition = .always;
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
@@ -103,33 +103,18 @@ pub fn build(b: *std.Build) !void {
         sample_run_step.dependOn(&sample_run_cmd.step);
     }
 
-    const gflatbuffers_dir = b.pathJoin(&.{ "src", "deps", "google-flatbuffers" });
-    const gflatbuffers_dir_build = b.pathJoin(&.{ gflatbuffers_dir, "build" });
-    try std.fs.cwd().makePath(gflatbuffers_dir_build);
-    build_options.addOption([]const u8, "flatc_exe", b.pathJoin(
-        &.{ gflatbuffers_dir_build, "flatc" },
-    ));
-
-    const flatbuffers_cmake = b.addSystemCommand(&.{
-        "cmake",
-        "-DFLATBUFFERS_BUILD_FLATC=on",
-        "-DFLATBUFFERS_BUILD_FLATLIB=off",
-        "-DFLATBUFFERS_BUILD_TESTS=off",
-        "-DFLATBUFFERS_BUILD_FLATHASH=off",
-        "-DFLATBUFFERS_SKIP_MONSTER_EXTRA=on",
-        "-DFLATBUFFERS_STRICT_MODE=on",
-        "..",
+    const flatbuffers_pkg = b.dependency("flatbuffers", .{
+        .target = target,
+        .optimize = optimize,
     });
-    flatbuffers_cmake.cwd = gflatbuffers_dir_build;
-    flatbuffers_cmake.stdout_action = .ignore;
-    exe.step.dependOn(&flatbuffers_cmake.step);
+    const flatc = flatbuffers_pkg.artifact("flatc");
+    exe.step.dependOn(&flatc.step);
 
-    const flatbuffers_cmake_build = b.addSystemCommand(&.{
-        "cmake",
-        "--build",
-        ".",
-    });
-    flatbuffers_cmake_build.cwd = gflatbuffers_dir_build;
-    flatbuffers_cmake_build.stdout_action = .ignore;
-    exe.step.dependOn(&flatbuffers_cmake_build.step);
+    const flatc_run = flatc.run();
+    flatc_run.cwd = b.pathFromRoot(".");
+    if (b.args) |args| flatc_run.addArgs(args);
+    const flatc_run_step = b.step("flatc", "Run flatc");
+    flatc_run_step.dependOn(&flatc_run.step);
+
+    build_options.addOption([]const u8, "flatc_exe", b.getInstallPath(.bin, "flatc"));
 }

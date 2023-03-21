@@ -56,7 +56,10 @@ pub fn main() !void {
         // setup a flatc command args used to gen .bfbs from .fbs args
         var argv = std.ArrayList([]const u8).init(alloc);
         try argv.appendSlice(&.{
-            build_options.flatc_exe,
+            "zig",
+            "build",
+            "flatc",
+            "--",
             "-b",
             "--schema",
             "--bfbs-comments",

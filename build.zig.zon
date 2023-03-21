@@ -7,5 +7,10 @@
             .url = "https://github.com/Hejsil/zig-clap/archive/cb13519431b916c05c6c783cb0ce3b232be5e400.tar.gz",
             .hash = "1220e0fd678f5f684b296a260950a36de86de2b78d0664f6206510de4cb32e54f518",
         },
+        .flatbuffers = .{
+            .url = "https://github.com/travisstaloch/flatbuffers/archive/55e48aaea8fddef1f025455f395f2408b9d40814.tar.gz",
+            .hash = "12200aa5e4c41aabca5c71c8d4dd92cd1f095760cd8a97de1575a4b842b06c658e9d",
+        },
+
     }
 }

@@ -2616,7 +2616,7 @@ pub fn generate(
         }
     }
 
-    std.debug.print("{s}\n", .{one_file_code.items});
+    // std.debug.print("{s}\n", .{one_file_code.items});
     // const zig_filename = try std.mem.concat(alloc, u8, &.{ basename, ".fb.zig" });
     // const zig_filepath = try std.fs.path.join(alloc, &.{ gen_path, zig_filename });
     // const zig_file = try std.fs.cwd().createFile(zig_filepath, .{});

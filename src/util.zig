@@ -30,14 +30,3 @@ pub fn toCamelCase(input: []const u8, first: bool, writer: anytype) !void {
             c);
     }
 }
-
-pub const FmtCamelUpper = struct {
-    s: []const u8,
-    pub fn format(v: FmtCamelUpper, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try toCamelCase(v.s, true, writer);
-    }
-};
-
-pub fn fmtCamelUpper(s: []const u8) FmtCamelUpper {
-    return .{ .s = s };
-}

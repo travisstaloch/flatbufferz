@@ -52,6 +52,7 @@ pub fn build(b: *std.Build) !void {
         "examples/monster_test.fbs",
         "examples/include_test/order.fbs",
         "examples/include_test/sub/no_namespace.fbs",
+        "examples/optional_scalars.fbs",
     }, &.{ "-I", "examples/include_test", "-I", "examples/include_test/sub" });
     const gen_mod = b.createModule(.{
         .source_file = gen_step.module.source_file,

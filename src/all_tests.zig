@@ -19,6 +19,9 @@ const InParentNamespace = gen.MyGame_InParentNamespace.InParentNamespace;
 const PizzaT = gen.Pizza.PizzaT;
 const FoodT = gen.order_Food.FoodT;
 const Food = gen.order_Food.Food;
+const ScalarStuff = gen.optional_scalars_ScalarStuff.ScalarStuff;
+const ScalarStuffT = gen.optional_scalars_ScalarStuff.ScalarStuffT;
+const OptionalByte = gen.optional_scalars_OptionalByte.OptionalByte;
 
 const Fail = fn (comptime []const u8, anytype) void;
 const expectEqualDeep = @import("testing.zig").expectEqualDeep;
@@ -163,7 +166,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(start.items, b, &i);
     }
 
-    { // test 4: 1xuint16 vector
+    { // test 4: 1xu16 vector
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -175,7 +178,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 1, 0, 0, 0, 1, 0, 0, 0 }, b, &i); // paddin
     }
 
-    { // test 5: 2xuint16 vector
+    { // test 5: 2xu16 vector
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -251,7 +254,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             6, 0, // vtable bytes
             8, 0, // length of object including vtable offset
             7, 0, // start of bool value
-            6, 0, 0, 0, // offset for start of vtable (int32)
+            6, 0, 0, 0, // offset for start of vtable (i32)
             0, 0, 0, // padded to 4 bytes
             1, // bool value
         }, b, &i);
@@ -269,10 +272,10 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             4, 0, // vtable bytes
             4, 0, // end of object from here
             // entry 1 is zero and not stored.
-            4, 0, 0, 0, // offset for start of vtable (int32)
+            4, 0, 0, 0, // offset for start of vtable (i32)
         }, b, &i);
     }
-    { // test 10: vtable with one int16
+    { // test 10: vtable with one i16
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -283,12 +286,12 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             6, 0, // vtable bytes
             8, 0, // end of object from here
             6, 0, // offset to value
-            6, 0, 0, 0, // offset for start of vtable (int32)
+            6, 0, 0, 0, // offset for start of vtable (i32)
             0,    0, // padding to 4 bytes
             0x9A, 0x78,
         }, b, &i);
     }
-    { // test 11: vtable with two int16
+    { // test 11: vtable with two i16
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -301,12 +304,12 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             8, 0, // end of object from here
             6, 0, // offset to value 0
             4, 0, // offset to value 1
-            8, 0, 0, 0, // offset for start of vtable (int32)
+            8, 0, 0, 0, // offset for start of vtable (i32)
             0x9A, 0x78, // value 1
             0x56, 0x34, // value 0
         }, b, &i);
     }
-    { // test 12: vtable with int16 and bool
+    { // test 12: vtable with i16 and bool
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -319,7 +322,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             8, 0, // end of object from here
             6, 0, // offset to value 0
             5, 0, // offset to value 1
-            8, 0, 0, 0, // offset for start of vtable (int32)
+            8, 0, 0, 0, // offset for start of vtable (i32)
             0, // padding
             1, // value 1
             0x56, 0x34, // value 0
@@ -339,7 +342,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             6, 0, // vtable bytes
             8, 0,
             4, 0, // offset to vector offset
-            6, 0, 0, 0, // offset for start of vtable (int32)
+            6, 0, 0, 0, // offset for start of vtable (i32)
             4, 0, 0, 0,
             0, 0, 0, 0, // length of vector (not in struct)
         }, b, &i);
@@ -365,7 +368,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             0, 0, 0, 0, // length of vector (not in struct)
         }, b, &i);
     }
-    { // test 13: vtable with 1 int16 and 2-vector of int16
+    { // test 13: vtable with 1 i16 and 2-vector of i16
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -382,16 +385,16 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             12, 0, // length of object
             6, 0, // start of value 0 from end of vtable
             8, 0, // start of value 1 from end of buffer
-            8, 0, 0, 0, // offset for start of vtable (int32)
+            8, 0, 0, 0, // offset for start of vtable (i32)
             0, 0, // padding
             55, 0, // value 0
             4, 0, 0, 0, // vector position from here
-            2, 0, 0, 0, // length of vector (uint32)
+            2, 0, 0, 0, // length of vector (u32)
             0x78, 0x56, // vector value 1
             0x34, 0x12, // vector value 0
         }, b, &i);
     }
-    { // test 14: vtable with 1 struct of 1 int8, 1 int16, 1 int32
+    { // test 14: vtable with 1 struct of 1 i8, 1 i16, 1 i32
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -409,7 +412,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             6, 0, // vtable bytes
             16, 0, // end of object from here
             4, 0, // start of struct from here
-            6, 0, 0, 0, // offset for start of vtable (int32)
+            6, 0, 0, 0, // offset for start of vtable (i32)
             0x78, 0x56, 0x34, 0x12, // value 2
             0, 0, // padding
             0x34, 0x12, // value 1
@@ -417,7 +420,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             55, // value 0
         }, b, &i);
     }
-    { // test 15: vtable with 1 vector of 2 struct of 2 int8
+    { // test 15: vtable with 1 vector of 2 struct of 2 i8
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
@@ -434,7 +437,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             6, 0, // vtable bytes
             8, 0,
             4, 0, // offset of vector offset
-            6, 0, 0, 0, // offset for start of vtable (int32)
+            6, 0, 0, 0, // offset for start of vtable (i32)
             4, 0, 0, 0, // vector start offset
             2, 0, 0, 0, // vector length
             66, // vector value 1,1
@@ -459,7 +462,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             8, 0, // end of object from here
             7, 0, // start of value 0
             4, 0, // start of value 1
-            8, 0, 0, 0, // offset for start of vtable (int32)
+            8, 0, 0, 0, // offset for start of vtable (i32)
             66, 0, // value 1
             0, // padding
             33, // value 0
@@ -490,7 +493,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             7, 0, // start of value 0
             6, 0, // start of value 1
             5, 0, // start of value 2
-            10, 0, 0, 0, // offset for start of vtable (int32)
+            10, 0, 0, 0, // offset for start of vtable (i32)
             0, // padding
             77, // value 2
             66, // value 1
@@ -500,7 +503,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             8, 0, // size of object
             7, 0, // start of value 0
             6, 0, // start of value 1
-            8, 0, 0, 0, // offset for start of vtable (int32)
+            8, 0, 0, 0, // offset for start of vtable (i32)
             0, 0, // padding
             44, // value 1
             33, // value 0
@@ -1216,6 +1219,234 @@ fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
     try expectEqualDeep(ordered_pizza, received_pizza);
 }
 
+// verifies against the ScalarStuff schema.
+fn checkOptionalScalars(alloc: mem.Allocator) !void {
+    const makeDefaultTestCases = struct {
+        fn func(s: ScalarStuff) !void {
+            try testing.expectEqual(@as(i8, 0), s.JustI8());
+            try testing.expectEqual(@as(?i8, null), s.MaybeI8());
+            try testing.expectEqual(@as(i8, 42), s.DefaultI8());
+            try testing.expectEqual(@as(u8, 0), s.JustU8());
+            try testing.expectEqual(@as(?u8, null), s.MaybeU8());
+            try testing.expectEqual(@as(u8, 42), s.DefaultU8());
+            try testing.expectEqual(@as(i16, 0), s.JustI16());
+            try testing.expectEqual(@as(?i16, null), s.MaybeI16());
+            try testing.expectEqual(@as(i16, 42), s.DefaultI16());
+            try testing.expectEqual(@as(u16, 0), s.JustU16());
+            try testing.expectEqual(@as(?u16, null), s.MaybeU16());
+            try testing.expectEqual(@as(u16, 42), s.DefaultU16());
+            try testing.expectEqual(@as(i32, 0), s.JustI32());
+            try testing.expectEqual(@as(?i32, null), s.MaybeI32());
+            try testing.expectEqual(@as(i32, 42), s.DefaultI32());
+            try testing.expectEqual(@as(u32, 0), s.JustU32());
+            try testing.expectEqual(@as(?u32, null), s.MaybeU32());
+            try testing.expectEqual(@as(u32, 42), s.DefaultU32());
+            try testing.expectEqual(@as(i64, 0), s.JustI64());
+            try testing.expectEqual(@as(?i64, null), s.MaybeI64());
+            try testing.expectEqual(@as(i64, 42), s.DefaultI64());
+            try testing.expectEqual(@as(u64, 0), s.JustU64());
+            try testing.expectEqual(@as(?u64, null), s.MaybeU64());
+            try testing.expectEqual(@as(u64, 42), s.DefaultU64());
+            try testing.expectEqual(@as(f32, 0), s.JustF32());
+            try testing.expectEqual(@as(?f32, null), s.MaybeF32());
+            try testing.expectEqual(@as(f32, 42), s.DefaultF32());
+            try testing.expectEqual(@as(f64, 0), s.JustF64());
+            try testing.expectEqual(@as(?f64, null), s.MaybeF64());
+            try testing.expectEqual(@as(f64, 42), s.DefaultF64());
+            try testing.expect(!s.JustBool());
+            try testing.expectEqual(@as(?bool, null), s.MaybeBool());
+            try testing.expect(s.DefaultBool());
+            try testing.expectEqual(OptionalByte.None, s.JustEnum());
+            try testing.expectEqual(@as(?OptionalByte, null), s.MaybeEnum());
+            try testing.expectEqual(OptionalByte.One, s.DefaultEnum());
+        }
+    }.func;
+
+    const makeAssignedTestCases = struct {
+        fn func(s: ScalarStuff) !void {
+            try testing.expectEqual(@as(i8, 5), s.JustI8());
+            try testing.expectEqual(@as(?i8, 5), s.MaybeI8());
+            try testing.expectEqual(@as(i8, 5), s.DefaultI8());
+            try testing.expectEqual(@as(u8, 6), s.JustU8());
+            try testing.expectEqual(@as(?u8, 6), s.MaybeU8());
+            try testing.expectEqual(@as(u8, 6), s.DefaultU8());
+            try testing.expectEqual(@as(i16, 7), s.JustI16());
+            try testing.expectEqual(@as(?i16, 7), s.MaybeI16());
+            try testing.expectEqual(@as(i16, 7), s.DefaultI16());
+            try testing.expectEqual(@as(u16, 8), s.JustU16());
+            try testing.expectEqual(@as(?u16, 8), s.MaybeU16());
+            try testing.expectEqual(@as(u16, 8), s.DefaultU16());
+            try testing.expectEqual(@as(i32, 9), s.JustI32());
+            try testing.expectEqual(@as(?i32, 9), s.MaybeI32());
+            try testing.expectEqual(@as(i32, 9), s.DefaultI32());
+            try testing.expectEqual(@as(u32, 10), s.JustU32());
+            try testing.expectEqual(@as(?u32, 10), s.MaybeU32());
+            try testing.expectEqual(@as(u32, 10), s.DefaultU32());
+            try testing.expectEqual(@as(i64, 11), s.JustI64());
+            try testing.expectEqual(@as(?i64, 11), s.MaybeI64());
+            try testing.expectEqual(@as(i64, 11), s.DefaultI64());
+            try testing.expectEqual(@as(u64, 12), s.JustU64());
+            try testing.expectEqual(@as(?u64, 12), s.MaybeU64());
+            try testing.expectEqual(@as(u64, 12), s.DefaultU64());
+            try testing.expectEqual(@as(f32, 13), s.JustF32());
+            try testing.expectEqual(@as(?f32, 13), s.MaybeF32());
+            try testing.expectEqual(@as(f32, 13), s.DefaultF32());
+            try testing.expectEqual(@as(f64, 14), s.JustF64());
+            try testing.expectEqual(@as(?f64, 14), s.MaybeF64());
+            try testing.expectEqual(@as(f64, 14), s.DefaultF64());
+            try testing.expect(s.JustBool());
+            try testing.expectEqual(@as(?bool, true), s.MaybeBool());
+            try testing.expect(!s.DefaultBool());
+            try testing.expectEqual(OptionalByte.Two, s.JustEnum());
+            try testing.expectEqual(@as(?OptionalByte, OptionalByte.Two), s.MaybeEnum());
+            try testing.expectEqual(OptionalByte.Two, s.DefaultEnum());
+        }
+    }.func;
+
+    const buildAssignedTable = struct {
+        fn func(b: *Builder) !ScalarStuff {
+            try ScalarStuff.Start(b);
+            try ScalarStuff.AddJustI8(b, 5);
+            try ScalarStuff.AddMaybeI8(b, 5);
+            try ScalarStuff.AddDefaultI8(b, 5);
+            try ScalarStuff.AddJustU8(b, 6);
+            try ScalarStuff.AddMaybeU8(b, 6);
+            try ScalarStuff.AddDefaultU8(b, 6);
+            try ScalarStuff.AddJustI16(b, 7);
+            try ScalarStuff.AddMaybeI16(b, 7);
+            try ScalarStuff.AddDefaultI16(b, 7);
+            try ScalarStuff.AddJustU16(b, 8);
+            try ScalarStuff.AddMaybeU16(b, 8);
+            try ScalarStuff.AddDefaultU16(b, 8);
+            try ScalarStuff.AddJustI32(b, 9);
+            try ScalarStuff.AddMaybeI32(b, 9);
+            try ScalarStuff.AddDefaultI32(b, 9);
+            try ScalarStuff.AddJustU32(b, 10);
+            try ScalarStuff.AddMaybeU32(b, 10);
+            try ScalarStuff.AddDefaultU32(b, 10);
+            try ScalarStuff.AddJustI64(b, 11);
+            try ScalarStuff.AddMaybeI64(b, 11);
+            try ScalarStuff.AddDefaultI64(b, 11);
+            try ScalarStuff.AddJustU64(b, 12);
+            try ScalarStuff.AddMaybeU64(b, 12);
+            try ScalarStuff.AddDefaultU64(b, 12);
+            try ScalarStuff.AddJustF32(b, 13);
+            try ScalarStuff.AddMaybeF32(b, 13);
+            try ScalarStuff.AddDefaultF32(b, 13);
+            try ScalarStuff.AddJustF64(b, 14);
+            try ScalarStuff.AddMaybeF64(b, 14);
+            try ScalarStuff.AddDefaultF64(b, 14);
+            try ScalarStuff.AddJustBool(b, true);
+            try ScalarStuff.AddMaybeBool(b, true);
+            try ScalarStuff.AddDefaultBool(b, false);
+            try ScalarStuff.AddJustEnum(b, .Two);
+            try ScalarStuff.AddMaybeEnum(b, .Two);
+            try ScalarStuff.AddDefaultEnum(b, .Two);
+            try b.finish(try ScalarStuff.End(b));
+            return ScalarStuff.GetRootAs(b.finishedBytes(), 0);
+        }
+    }.func;
+
+    // test default values
+    var fbb = Builder.init(alloc);
+    defer fbb.deinitAll();
+    try ScalarStuff.Start(&fbb);
+    try fbb.finish(try ScalarStuff.End(&fbb));
+    var ss = ScalarStuff.GetRootAs(fbb.finishedBytes(), 0);
+    try makeDefaultTestCases(ss);
+
+    // test assigned values
+    fbb.reset();
+    ss = try buildAssignedTable(&fbb);
+    try makeAssignedTestCases(ss);
+
+    // test native object pack
+    fbb.reset();
+    var obj = ScalarStuffT{
+        .just_i8 = 5,
+        .maybe_i8 = 5,
+        .default_i8 = 5,
+        .just_u8 = 6,
+        .maybe_u8 = 6,
+        .default_u8 = 6,
+        .just_i16 = 7,
+        .maybe_i16 = 7,
+        .default_i16 = 7,
+        .just_u16 = 8,
+        .maybe_u16 = 8,
+        .default_u16 = 8,
+        .just_i32 = 9,
+        .maybe_i32 = 9,
+        .default_i32 = 9,
+        .just_u32 = 10,
+        .maybe_u32 = 10,
+        .default_u32 = 10,
+        .just_i64 = 11,
+        .maybe_i64 = 11,
+        .default_i64 = 11,
+        .just_u64 = 12,
+        .maybe_u64 = 12,
+        .default_u64 = 12,
+        .just_f32 = 13,
+        .maybe_f32 = 13,
+        .default_f32 = 13,
+        .just_f64 = 14,
+        .maybe_f64 = 14,
+        .default_f64 = 14,
+        .just_bool = true,
+        .maybe_bool = true,
+        .default_bool = false,
+        .just_enum = .Two,
+        .maybe_enum = .Two,
+        .default_enum = .Two,
+    };
+
+    try fbb.finish(try obj.pack(&fbb, .{}));
+    ss = ScalarStuff.GetRootAs(fbb.finishedBytes(), 0);
+    try makeAssignedTestCases(ss);
+
+    // test native object unpack
+    fbb.reset();
+    ss = try buildAssignedTable(&fbb);
+    try ScalarStuffT.unpackTo(ss, &obj, .{});
+    try testing.expectEqual(@as(i8, 5), obj.just_i8);
+    try testing.expectEqual(@as(?i8, 5), obj.maybe_i8);
+    try testing.expectEqual(@as(i8, 5), obj.default_i8);
+    try testing.expectEqual(@as(u8, 6), obj.just_u8);
+    try testing.expectEqual(@as(?u8, 6), obj.maybe_u8);
+    try testing.expectEqual(@as(u8, 6), obj.default_u8);
+    try testing.expectEqual(@as(i16, 7), obj.just_i16);
+    try testing.expectEqual(@as(?i16, 7), obj.maybe_i16);
+    try testing.expectEqual(@as(i16, 7), obj.default_i16);
+    try testing.expectEqual(@as(u16, 8), obj.just_u16);
+    try testing.expectEqual(@as(?u16, 8), obj.maybe_u16);
+    try testing.expectEqual(@as(u16, 8), obj.default_u16);
+    try testing.expectEqual(@as(i32, 9), obj.just_i32);
+    try testing.expectEqual(@as(?i32, 9), obj.maybe_i32);
+    try testing.expectEqual(@as(i32, 9), obj.default_i32);
+    try testing.expectEqual(@as(u32, 10), obj.just_u32);
+    try testing.expectEqual(@as(?u32, 10), obj.maybe_u32);
+    try testing.expectEqual(@as(u32, 10), obj.default_u32);
+    try testing.expectEqual(@as(i64, 11), obj.just_i64);
+    try testing.expectEqual(@as(?i64, 11), obj.maybe_i64);
+    try testing.expectEqual(@as(i64, 11), obj.default_i64);
+    try testing.expectEqual(@as(u64, 12), obj.just_u64);
+    try testing.expectEqual(@as(?u64, 12), obj.maybe_u64);
+    try testing.expectEqual(@as(u64, 12), obj.default_u64);
+    try testing.expectEqual(@as(f32, 13), obj.just_f32);
+    try testing.expectEqual(@as(?f32, 13), obj.maybe_f32);
+    try testing.expectEqual(@as(f32, 13), obj.default_f32);
+    try testing.expectEqual(@as(f64, 14), obj.just_f64);
+    try testing.expectEqual(@as(?f64, 14), obj.maybe_f64);
+    try testing.expectEqual(@as(f64, 14), obj.default_f64);
+    try testing.expect(obj.just_bool);
+    try testing.expectEqual(@as(?bool, true), obj.maybe_bool);
+    try testing.expect(!obj.default_bool);
+    try testing.expectEqual(OptionalByte.Two, obj.just_enum);
+    try testing.expectEqual(@as(?OptionalByte, OptionalByte.Two), obj.maybe_enum);
+    try testing.expectEqual(OptionalByte.Two, obj.default_enum);
+}
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1267,4 +1498,10 @@ test "all" {
 
     // Check a no namespace import
     try checkNoNamespaceImport(talloc);
+
+    // Check size-prefixed flatbuffers
+    // TODO try checkSizePrefixedBuffer(talloc)
+
+    // Check that optional scalars works
+    try checkOptionalScalars(talloc);
 }

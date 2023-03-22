@@ -38,12 +38,13 @@ pub fn build(b: *std.Build) !void {
 
     exe.install();
 
-    const run_cmd = exe.run();
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    const exe_run = b.addRunArtifact(exe);
+    exe_run.has_side_effects = true;
+    exe_run.step.dependOn(b.getInstallStep());
+    if (b.args) |args| exe_run.addArgs(args);
 
     const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    run_step.dependOn(&exe_run.step);
 
     // generate files that need to be avaliable in tests
     const gen_step = try sdk.GenStep.create(b, exe, &.{
@@ -70,7 +71,9 @@ pub fn build(b: *std.Build) !void {
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.run().step);
+    const tests_run = b.addRunArtifact(exe_tests);
+    test_step.dependOn(&tests_run.step);
+    tests_run.has_side_effects = true;
 
     // TODO remove this flag.
     const build_sample = b.option(
@@ -92,13 +95,10 @@ pub fn build(b: *std.Build) !void {
 
         sample_exe.install();
 
-        const sample_run_cmd = sample_exe.run();
-        sample_run_cmd.step.dependOn(b.getInstallStep());
-        if (b.args) |args| {
-            sample_run_cmd.addArgs(args);
-        }
+        const sample_run = b.addRunArtifact(sample_exe);
+        sample_run.has_side_effects = true;
         const sample_run_step = b.step("run-sample", "Run the app");
-        sample_run_step.dependOn(&sample_run_cmd.step);
+        sample_run_step.dependOn(&sample_run.step);
     }
 
     const flatbuffers_dep = b.dependency("flatbuffers", .{
@@ -106,9 +106,14 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const flatc = flatbuffers_dep.artifact("flatc");
+    // FIXME install() doesn't do anything. why not? would like to get the path
+    // to the flatc exe somehow and provide that path as a build option so that
+    // it can be used in main.zig
+    flatc.install();
     exe.step.dependOn(&flatc.step);
 
-    const flatc_run = flatc.run();
+    const flatc_run = b.addRunArtifact(flatc);
+    flatc_run.has_side_effects = true;
     flatc_run.cwd = b.pathFromRoot(".");
     if (b.args) |args| flatc_run.addArgs(args);
     const flatc_run_step = b.step("flatc", "Run packaged flatc compiler");

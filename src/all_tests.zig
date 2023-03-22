@@ -729,29 +729,36 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
     try testForMutatedValues(t);
 }
 
+/// create len random valid utf8 strings w/ maxlen 256
+fn createRandomStrings(alloc: mem.Allocator, len: usize, rand: std.rand.Random) ![]std.ArrayListUnmanaged(u8) {
+    var strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
+    for (strings) |*s| {
+        s.* = .{};
+        const slen = rand.int(u8);
+        var i: usize = 0;
+        while (i < slen) {
+            const c = rand.int(u21);
+            const cplen = std.unicode.utf8CodepointSequenceLength(c) catch continue;
+            if (i + cplen >= slen) break;
+            var buf: [4]u8 = undefined;
+            _ = std.unicode.utf8Encode(c, &buf) catch continue;
+            try s.appendSlice(alloc, buf[0..cplen]);
+            i += cplen;
+        }
+    }
+    return strings;
+}
+
 fn checkSharedStrings(alloc: mem.Allocator) !void {
     var prng = std.rand.DefaultPrng.init(0);
     const rand = prng.random();
     const len = 100;
     for (0..len) |_| {
-        // create len random valid utf8 strings w/ maxlen 256
-        var strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
-        defer alloc.free(strings);
-        for (strings) |*s| {
-            s.* = .{};
-            const slen = rand.int(u8);
-            var i: usize = 0;
-            while (i < slen) {
-                const c = rand.int(u21);
-                const cplen = std.unicode.utf8CodepointSequenceLength(c) catch continue;
-                if (i + cplen >= slen) break;
-                var buf: [4]u8 = undefined;
-                _ = std.unicode.utf8Encode(c, &buf) catch continue;
-                try s.appendSlice(alloc, buf[0..cplen]);
-                i += cplen;
-            }
+        const strings = try createRandomStrings(alloc, len, rand);
+        defer {
+            for (strings) |*s| s.deinit(alloc);
+            alloc.free(strings);
         }
-        defer for (strings) |*s| s.deinit(alloc);
 
         var b = Builder.init(alloc);
         defer b.deinitAll();
@@ -763,6 +770,34 @@ fn checkSharedStrings(alloc: mem.Allocator) !void {
                 const off2 = try b.createSharedString(s2);
                 try testing.expect(mem.eql(u8, s1, s2) == (off1 == off2));
             }
+        }
+    }
+}
+
+fn checkEmptiedBuilder(alloc: mem.Allocator) !void {
+    var prng = std.rand.DefaultPrng.init(0);
+    const rand = prng.random();
+    const len = 100;
+    const strings = try createRandomStrings(alloc, len, rand);
+    defer {
+        for (strings) |*s| s.deinit(alloc);
+        alloc.free(strings);
+    }
+    for (strings) |l1| {
+        const a = l1.items;
+        for (strings) |l2| {
+            const b = l2.items;
+            if (mem.eql(u8, a, b)) continue;
+            var builder = Builder.init(alloc);
+            defer builder.deinitAll();
+
+            const a1 = try builder.createSharedString(a);
+            const b1 = try builder.createSharedString(b);
+            builder.reset();
+            const b2 = try builder.createSharedString(b);
+            const a2 = try builder.createSharedString(a);
+
+            try testing.expect(!(a1 == a2 or b1 == b2));
         }
     }
 }
@@ -1731,14 +1766,9 @@ test "all" {
     try checkByteLayout(talloc);
     try checkMutateMethods(talloc);
 
-    // Verify that panics are raised during exceptional conditions:
-    // try checkNotInObjectError();
-    // try checkStringIsNestedError();
-    // try checkByteStringIsNestedError();
-    // try checkStructIsNotInlineError();
-    // try checkFinishedBytesError();
+    // Verify shared strings behavior
     try checkSharedStrings(talloc);
-    // try checkEmptiedBuilder();
+    try checkEmptiedBuilder(talloc);
 
     // Verify that GetRootAs works for non-root tables
     try checkGetRootAsForNonRootTable(talloc);

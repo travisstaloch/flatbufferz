@@ -19,9 +19,13 @@ const todo = common.todo;
 const TypenameSet = std.StringHashMap(BaseType);
 const debug = false;
 
-fn genComment(e: anytype, writer: anytype) !void {
+fn genComment(e: anytype, comment_type: enum { doc, normal }, writer: anytype) !void {
+    const prefix = switch (comment_type) {
+        .doc => "///",
+        .normal => "//",
+    };
     for (0..e.DocumentationLen()) |i| {
-        if (e.Documentation(i)) |d| try writer.print("//{s}\n", .{d});
+        if (e.Documentation(i)) |d| try writer.print("{s}{s}\n", .{ prefix, d });
     }
 }
 
@@ -227,14 +231,14 @@ fn genEnum(
 ) !void {
     // Generate enum declarations.
     // TODO check if already generated
-    try genComment(e, writer);
+    try genComment(e, .doc, writer);
     const base_type = e.UnderlyingType().?.BaseType();
     try genEnumType(e, writer, schema, base_type, imports);
     {
         var i: u32 = 0;
         while (i < e.ValuesLen()) : (i += 1) {
             const ev = e.Values(i).?;
-            try genComment(ev, writer);
+            try genComment(ev, .doc, writer);
             if (base_type.isUnion() or base_type == .UTYPE)
                 try unionMember(e, ev, schema, writer)
             else
@@ -246,7 +250,7 @@ fn genEnum(
 
     try writer.print(
         \\pub fn tagName(v: @This()) []const u8 {{
-        \\  return @tagName(v);
+        \\return @tagName(v);
         \\}}
         \\}};
         \\
@@ -341,7 +345,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
             try writer.print(".{s} => |x| return x.?.pack(__builder, __pack_opts),\n", .{ev.Name()});
     }
     _ = try writer.write(
-        \\  }
+        \\}
         \\return 0;
         \\}
         \\
@@ -358,7 +362,7 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
         \\pub fn unpack(rcv: {0s}.Tag, table: fb.Table, __pack_opts: fb.common.PackOptions) !{1s}T {{
         \\{2s}std.debug.print("unpack() {0s} rcv=.{{s}}\n", .{{@tagName(rcv)}});
         \\_ = .{{__pack_opts}};
-        \\  switch (rcv) {{
+        \\switch (rcv) {{
         \\
     ,
         .{ last_name, last_name, if (debug) "" else "// " },
@@ -383,8 +387,8 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
         }
     }
     _ = try writer.write(
-        \\  }
-        \\  unreachable;
+        \\}
+        \\unreachable;
         \\}
         \\
         \\
@@ -436,10 +440,25 @@ fn saveType(
             return e;
         },
     };
+
+    // use std.zig.Ast to parse() and render() the generated source so that it
+    // looks nice. this is equivalent to running 'zig fmt' on the file.
+    const alloc = imports.allocator;
+
+    var src = std.ArrayList(u8).init(alloc);
+    defer src.deinit();
+    const src_writer = src.writer();
+    try genPrelude(bfbs_path, decl_file, basename, typename, imports, src_writer);
+    try src_writer.writeAll(contents);
+
+    var ast = try std.zig.Ast.parse(alloc, try src.toOwnedSliceSentinel(0), .zig);
+    defer ast.deinit(alloc);
+    const formatted_src = try ast.render(alloc);
+    defer alloc.free(formatted_src);
+
     const f = try std.fs.cwd().createFile(outpath, .{});
     defer f.close();
-    try genPrelude(bfbs_path, decl_file, basename, typename, imports, f.writer());
-    _ = try f.write(contents);
+    try f.writeAll(formatted_src);
 }
 
 const NsEntry = union(enum) {
@@ -520,7 +539,6 @@ fn writeNs(
     writer: anytype,
     path_buf: *NsTmpArr,
     typename: []const u8,
-    depth: u8,
 ) !void {
     var iter = nsmap.iterator();
     while (iter.next()) |it| {
@@ -558,7 +576,6 @@ fn writeNs(
                         \\
                     , .{ path_buf.len, dots, path });
 
-                    if (depth != 0) _ = try writer.write("pub ");
                     const dotsfmt = RepeatedFmt("..", std.fs.path.sep){ .times = dots };
                     try writer.print(
                         \\const {0s} = @import("{3}{1s}{0s}{2s}").{0s};
@@ -578,7 +595,6 @@ fn writeNs(
                     , .{same});
                     if (!same) {
                         const dots = mem.count(u8, typename, ".");
-                        if (depth != 0) _ = try writer.write("pub ");
                         const dots_fmt = RepeatedFmt("..", std.fs.path.sep){ .times = dots };
                         try writer.print(
                             \\const {0s} = @import("{2}{0s}{1s}").{0s};
@@ -593,7 +609,6 @@ fn writeNs(
                 }
             },
             .node => |map| {
-                if (depth != 0) _ = try writer.write("pub ");
                 try writer.print(
                     \\const {0s} = struct {{
                     \\
@@ -602,7 +617,7 @@ fn writeNs(
                 defer path_buf.len = len;
                 try path_buf.appendSlice(full_name);
                 try path_buf.append('.');
-                try writeNs(map, writer, path_buf, typename, depth + 1);
+                try writeNs(map, writer, path_buf, typename);
                 _ = try writer.write("\n};\n");
             },
         }
@@ -642,7 +657,9 @@ fn genPrelude(
         }
     }
     var arr = NsTmpArr{};
-    try writeNs(nsroot, writer, &arr, typename, 0);
+    _ = try writer.write("// a 'dummy' local namespace which matches typenames produced by flatc\n");
+    try writeNs(nsroot, writer, &arr, typename);
+    try writer.writeByte('\n');
 }
 
 // FIXME: unused
@@ -694,9 +711,9 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
             {
                 try writer.print(
                     \\const {0s} = if (rcv.{1s}.items.len != 0)
-                    \\  try __builder.createByteString(rcv.{1s}.items)
+                    \\try __builder.createByteString(rcv.{1s}.items)
                     \\else
-                    \\  0;
+                    \\0;
                     \\
                 , .{ fname_off, fieldNameFmt(fname_orig, imports) });
             } else if (field_base_ty.isVector()) {
@@ -777,6 +794,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     .{ fname_off, fieldNameFmt(fname_orig, imports) },
                 );
             } else unreachable;
+            try writer.writeByte('\n');
         }
     }
 
@@ -960,6 +978,7 @@ fn genNativeTableUnpack(
                     \\
                 , .{ fname, fname_upper_camel, fty_fmt });
             } else unreachable;
+            try writer.writeByte('\n');
         }
     }
 
@@ -1151,6 +1170,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         const fname = field.Name();
         if (field_base_ty == .UTYPE and mem.endsWith(u8, fname, "_type")) continue;
 
+        try genComment(field, .doc, writer);
         try writer.print("{}: ", .{fieldNameFmt(fname, imports)});
         const fty_fmt = TypeFmt.init(
             field_ty,
@@ -1197,7 +1217,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         }
         _ = try writer.write(",\n");
     }
-    _ = try writer.write("\n");
+    try writer.writeByte('\n');
     if (!o.IsStruct()) {
         try genNativeTablePack(o, schema, imports, writer);
         try genNativeTableUnpack(o, schema, imports, writer);
@@ -1350,7 +1370,7 @@ fn genGetter(
 /// this is the prefix code for that.
 fn offsetPrefix(field: Field, writer: anytype) !void {
     try writer.print(
-        \\ {{
+        \\{{
         \\const o = rcv._tab.offset({});
         \\if (o != 0) {{
         \\
@@ -1848,7 +1868,7 @@ fn getUnionField(
     try writer.print(
         \\pub fn {s}(rcv: {s}) ?fb.Table
     , .{ fname_camel_upper, lastName(oname) });
-    _ = try writer.write("\n");
+    try writer.writeByte('\n');
     try offsetPrefix(field, writer);
     _ = try writer.write("return ");
     try genGetter(field_ty, schema, imports, writer);
@@ -1906,11 +1926,20 @@ fn getMemberOfVectorOfStruct(
         .{ .is_optional = field.Optional() },
     );
     const indir_str = if (o2.IsStruct()) "" else "\n  x = rcv._tab.indirect(x);\n";
+    if (debug) try writer.print(
+        \\// base={} ele={} fixed_len={} base_size={} ele_size={}
+        \\
+    , .{
+        field_ty.BaseType(),
+        field_ty.Element(),
+        field_ty.FixedLength(),
+        field_ty.BaseSize(),
+        field_ty.ElementSize(),
+    });
     try writer.print(
-        \\  var x = rcv._tab.vector(o);
-        \\  // base={3} ele={4} fixed_len={5} base_size={6} ele_size={7}
-        \\  x += @intCast(u32, j) * {0};{2s}
-        \\  return {1}.init(rcv._tab.bytes, x);
+        \\var x = rcv._tab.vector(o);
+        \\x += @intCast(u32, j) * {0};{2s}
+        \\return {1}.init(rcv._tab.bytes, x);
         \\}}
         \\return null;
         \\}}
@@ -1920,11 +1949,6 @@ fn getMemberOfVectorOfStruct(
         inlineSize(field_ty, schema),
         fty_fmt,
         indir_str,
-        field_ty.BaseType(),
-        field_ty.Element(),
-        field_ty.FixedLength(),
-        field_ty.BaseSize(),
-        field_ty.ElementSize(),
     });
 }
 
@@ -1999,8 +2023,8 @@ fn getMemberOfVectorOfNonStruct(
 
     try offsetPrefix(field, writer);
     _ = try writer.write(
-        \\  const a = rcv._tab.vector(o);
-        \\  return 
+        \\const a = rcv._tab.vector(o);
+        \\return 
     );
 
     try genGetter(field_ty, schema, imports, writer);
@@ -2193,7 +2217,6 @@ fn genStructAccessor(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    try genComment(field, writer);
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
 
@@ -2356,7 +2379,6 @@ fn genStructMutator(
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
-    try genComment(o, writer);
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
     if (field_base_ty.isScalar()) {
@@ -2381,7 +2403,7 @@ fn genStruct(
 ) !void {
     // TODO if (o.generated) return;
 
-    try genComment(o, writer);
+    try genComment(o, .doc, writer);
     if (gen_obj_based_api) {
         try genNativeStruct(o, schema, imports, writer);
     }
@@ -2404,6 +2426,7 @@ fn genStruct(
         const field = o.Fields(getFieldIdxById(o, i).?).?;
         if (field.Deprecated()) continue;
 
+        try genComment(field, .doc, writer);
         try genStructAccessor(o, field, schema, imports, writer);
         try genStructMutator(o, field, schema, imports, writer);
 

@@ -687,6 +687,8 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
     try writer.print(
         \\pub fn pack(rcv: {s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) fb.common.PackError!u32 {{
         \\_ = .{{__pack_opts}};
+        \\var __tmp_offsets = std.ArrayListUnmanaged(u32){{}};
+        \\defer if(__pack_opts.allocator) |alloc| __tmp_offsets.deinit(alloc);
         \\
     , .{struct_type});
     {
@@ -738,17 +740,15 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     \\
                 , .{ fname_off, fieldNameFmt(fname_orig, imports), fname_len });
                 const fty_ele = field_ty.Element();
-                const fname_offsets = FmtWithSuffix("_offsets"){ .name = fname_orig };
                 if (fty_ele == .STRING) {
                     try writer.print(
-                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {1s}));
-                        \\defer {0s}.deinit(__pack_opts.allocator.?);
-                        \\{0s}.expandToCapacity();
-                        \\for ({0s}.items, 0..) |*off, j| {{
-                        \\off.* = try __builder.createString(rcv.{2s}.items[j]);
+                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @bitCast(u32, {0s}));
+                        \\__tmp_offsets.items.len = @bitCast(u32, {0s});
+                        \\for (__tmp_offsets.items, 0..) |*off, j| {{
+                        \\off.* = try __builder.createString(rcv.{1s}.items[j]);
                         \\}}
                         \\
-                    , .{ fname_offsets, fname_len, fieldNameFmt(fname_orig, imports) });
+                    , .{ fname_len, fieldNameFmt(fname_orig, imports) });
                 } else if (fty_ele == .STRUCT and !isStruct(field_ty.Index(), schema)) {
                     const fty_fmt = TypeFmt.init(
                         field_ty,
@@ -758,19 +758,18 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         .{ .is_optional = field.Optional() },
                     );
                     try writer.print(
-                        \\var {0s} = try std.ArrayListUnmanaged(u32).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {1s}));
-                        \\defer {0s}.deinit(__pack_opts.allocator.?);
-                        \\{0s}.expandToCapacity();
-                        \\for ({0s}.items, 0..) |*off, j| {{
-                        \\off.* = try {3}T.pack(rcv.{2s}.items[j], __builder, __pack_opts);
+                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @bitCast(u32, {0s}));
+                        \\__tmp_offsets.items.len = @bitCast(u32, {0s});
+                        \\for (__tmp_offsets.items, 0..) |*off, j| {{
+                        \\off.* = try {2}T.pack(rcv.{1s}.items[j], __builder, __pack_opts);
                         \\}}
                         \\
-                    , .{ fname_offsets, fname_len, fieldNameFmt(fname_orig, imports), fty_fmt });
+                    , .{ fname_len, fieldNameFmt(fname_orig, imports), fty_fmt });
                 }
 
                 const fname_camel_upper = camelUpperFmt(fname_orig, imports);
                 try writer.print(
-                    \\_ = try {s}.Start{}Vector(__builder, @bitCast(i32, {2s}));
+                    \\_ = try {s}.Start{}Vector(__builder, {2s});
                     \\{{
                     \\var j = {2s} - 1;
                     \\while (j >= 0) : (j -= 1) {{
@@ -784,7 +783,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
                     try writer.print("_ = try rcv.{s}.items[@bitCast(u32, j)].pack(__builder, __pack_opts);\n", .{fname_orig});
                 } else {
-                    try writer.print("try __builder.prependUOff({}.items[@bitCast(u32, j)]);", .{fname_offsets});
+                    try writer.print("try __builder.prependUOff(__tmp_offsets.items[@bitCast(u32, j)]);", .{});
                 }
                 try writer.print(
                     \\}}
@@ -941,7 +940,6 @@ fn genNativeTableUnpack(
                         \\var j: u32 = 0;
                         \\while (j < {3}) : (j += 1) {{
                         \\const x = rcv.{1}(j).?;
-                        \\
                         \\
                     , .{ fname, fname_upper_camel, fty_fmt, fname_len })
                 else
@@ -1952,7 +1950,7 @@ fn getMemberOfVectorOfStruct(
         imports,
         .{ .is_optional = field.Optional() },
     );
-    const indir_str = if (o2.IsStruct()) "" else "\n  x = rcv._tab.indirect(x);\n";
+    const indir_str = if (o2.IsStruct()) "" else "\nx = rcv._tab.indirect(x);";
     if (debug) try writer.print(
         \\// base={} ele={} fixed_len={} base_size={} ele_size={}
         \\

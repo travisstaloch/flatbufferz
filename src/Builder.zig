@@ -360,10 +360,10 @@ pub fn createVectorOfSortedTables(
 }
 
 /// Checks if 's' is already written to the buffer before calling createString()
-pub fn createSharedString(b: *Builder, s: []const u8) u32 {
-    const gop = b.shared_strings.getOrPut(b.alloc, s);
+pub fn createSharedString(b: *Builder, s: []const u8) !u32 {
+    const gop = try b.shared_strings.getOrPut(b.alloc, s);
     if (gop.found_existing) return gop.value_ptr.*;
-    const off = b.createString(s);
+    const off = try b.createString(s);
     gop.value_ptr.* = off;
     return off;
 }

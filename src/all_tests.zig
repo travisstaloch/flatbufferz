@@ -729,6 +729,44 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
     try testForMutatedValues(t);
 }
 
+fn checkSharedStrings(alloc: mem.Allocator) !void {
+    var prng = std.rand.DefaultPrng.init(0);
+    const rand = prng.random();
+    const len = 100;
+    for (0..len) |_| {
+        // create len random valid utf8 strings w/ maxlen 256
+        var strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
+        defer alloc.free(strings);
+        for (strings) |*s| {
+            s.* = .{};
+            const slen = rand.int(u8);
+            var i: usize = 0;
+            while (i < slen) {
+                const c = rand.int(u21);
+                const cplen = std.unicode.utf8CodepointSequenceLength(c) catch continue;
+                if (i + cplen >= slen) break;
+                var buf: [4]u8 = undefined;
+                _ = std.unicode.utf8Encode(c, &buf) catch continue;
+                try s.appendSlice(alloc, buf[0..cplen]);
+                i += cplen;
+            }
+        }
+        defer for (strings) |*s| s.deinit(alloc);
+
+        var b = Builder.init(alloc);
+        defer b.deinitAll();
+        for (strings) |l1| {
+            const s1 = l1.items;
+            for (strings) |l2| {
+                const s2 = l2.items;
+                const off1 = try b.createSharedString(s1);
+                const off2 = try b.createSharedString(s2);
+                try testing.expect(mem.eql(u8, s1, s2) == (off1 == off2));
+            }
+        }
+    }
+}
+
 fn checkGetRootAsForNonRootTable(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
     defer b.deinitAll();
@@ -1699,7 +1737,7 @@ test "all" {
     // try checkByteStringIsNestedError();
     // try checkStructIsNotInlineError();
     // try checkFinishedBytesError();
-    // try checkSharedStrings();
+    try checkSharedStrings(talloc);
     // try checkEmptiedBuilder();
 
     // Verify that GetRootAs works for non-root tables

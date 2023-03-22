@@ -24,14 +24,12 @@ const ScalarStuff = gen.optional_scalars_ScalarStuff.ScalarStuff;
 const ScalarStuffT = gen.optional_scalars_ScalarStuff.ScalarStuffT;
 const OptionalByte = gen.optional_scalars_OptionalByte.OptionalByte;
 
-const Fail = fn (comptime []const u8, anytype) void;
 const expectEqualDeep = @import("testing.zig").expectEqualDeep;
 
 // build an example Monster. returns (buf,offset)
 fn checkGeneratedBuild(
     alloc: mem.Allocator,
     sizePrefix: bool,
-    comptime fail: Fail,
 ) !struct { []u8, u32 } {
     var b = Builder.init(alloc);
     defer b.deinit();
@@ -79,8 +77,7 @@ fn checkGeneratedBuild(
     const mon = try Monster.End(&b);
 
     if (sizePrefix) {
-        // b.FinishSizePrefixed(mon);
-        fail("TODO b.FinishSizePrefixed()", .{});
+        try b.finishSizePrefixed(mon);
     } else {
         try b.finish(mon);
     }
@@ -758,7 +755,7 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     const pos = try Vec3.Create(&b, 1.0, 2.0, 3.0, 3.0, Color.Green, 5, 6);
     _ = try b.finish(pos);
     const vec3_bytes = b.finishedBytes();
-    const vec3 = fb.GetRootAs(vec3_bytes, 0, Vec3);
+    const vec3 = fb.GetRootAs(Vec3, vec3_bytes, 0);
     try testing.expect(mem.eql(u8, vec3_bytes, vec3.Table().bytes));
     b.deinit();
     alloc.free(vec3_bytes);
@@ -786,18 +783,15 @@ fn checkReadBuffer(
     buf: []u8,
     offset: u32,
     sizePrefix: bool,
-    comptime fail: Fail,
 ) !void {
     _ = alloc;
     // try the two ways of generating a monster
-    const mons = if (sizePrefix) {
-        // example.GetSizePrefixedRootAsMonster(buf, offset),
-        // flatbuffers.GetSizePrefixedRootAs(buf, offset, monster2),
-        fail("TODO: checkReadBuffer() sizePrefix=true", .{});
-        return error.TODO;
+    const mons = if (sizePrefix) [_]Monster{
+        Monster.GetSizePrefixedRootAs(buf, offset),
+        fb.GetSizePrefixedRootAs(Monster, buf, offset),
     } else [_]Monster{
         Monster.GetRootAs(buf, offset),
-        fb.GetRootAs(buf, offset, Monster),
+        fb.GetRootAs(Monster, buf, offset),
     };
 
     for (mons, 0..) |monster, i| {
@@ -812,20 +806,20 @@ fn checkReadBuffer(
         const vec = monster.Pos() orelse return testing.expect(false);
 
         testing.expectApproxEqAbs(@as(f32, 1.0), vec.X(), std.math.f32_epsilon) catch |e| {
-            fail("Pox.X() != 1.0. i = {}", .{i});
+            std.log.err("Pox.X() != 1.0. i = {}", .{i});
             return e;
         };
         testing.expectApproxEqAbs(@as(f32, 2.0), vec.Y(), std.math.f32_epsilon) catch |e| {
-            fail("Pox.Y() != 2.0. i = {}", .{i});
+            std.log.err("Pox.Y() != 2.0. i = {}", .{i});
             return e;
         };
         testing.expectApproxEqAbs(@as(f32, 3.0), vec.Z(), std.math.f32_epsilon) catch |e| {
-            fail("Pox.Z() != 3.0. i = {}", .{i});
+            std.log.err("Pox.Z() != 3.0. i = {}", .{i});
             return e;
         };
 
         testing.expectApproxEqAbs(@as(f64, 3.0), vec.Test1(), std.math.f32_epsilon) catch |e| {
-            fail("Pox.Test1() != 3.0. i = {}", .{i});
+            std.log.err("Pox.Test1() != 3.0. i = {}", .{i});
             return e;
         };
 
@@ -885,18 +879,14 @@ fn checkMutateBuffer(
     org: []const u8,
     offset: u32,
     sizePrefix: bool,
-    comptime fail: Fail,
 ) !void {
-    _ = fail;
-
     // make a copy to mutate
     var buf = try alloc.dupe(u8, org);
     defer alloc.free(buf);
 
     // load monster data from the buffer
     var monster = if (sizePrefix)
-        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
-        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+        Monster.GetSizePrefixedRootAs(buf, offset)
     else
         Monster.GetRootAs(buf, offset);
 
@@ -974,8 +964,7 @@ fn checkMutateBuffer(
     // To make sure the buffer has changed accordingly
     // Read data from the buffer and verify all fields
     monster = if (sizePrefix)
-        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
-        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+        Monster.GetSizePrefixedRootAs(buf, offset)
     else
         Monster.GetRootAs(buf, offset);
 
@@ -991,8 +980,7 @@ fn checkMutateBuffer(
     // This test is done to make sure mutations do not do
     // any unnecessary changes to the buffer.
     monster = if (sizePrefix)
-        // monster = example.GetSizePrefixedRootAsMonster(buf, offset)
-        fb.common.todo("sizePrefix=true, GetSizePrefixedRootAsMonster", .{})
+        Monster.GetSizePrefixedRootAs(buf, offset)
     else
         Monster.GetRootAs(buf, offset);
 
@@ -1018,14 +1006,13 @@ fn checkObjectAPI(
     buf: []u8,
     offset: u32,
     sizePrefix: bool,
-    comptime fail: Fail,
 ) !void {
-    var monster = if (sizePrefix)
-        // monster = example.GetSizePrefixedRootAsMonster(buf, offset).UnPack()
-        return fail("TODO checkObjectAPI() sizePrefix=true", .{})
+    const monster_ = if (sizePrefix)
+        Monster.GetSizePrefixedRootAs(buf, offset)
     else
-        try MonsterT.unpack(Monster.GetRootAs(buf, offset), .{ .allocator = alloc });
+        Monster.GetRootAs(buf, offset);
 
+    var monster = try MonsterT.unpack(monster_, .{ .allocator = alloc });
     defer monster.deinit(alloc);
 
     try std.testing.expectEqual(@as(i16, 80), monster.hp);
@@ -1218,6 +1205,28 @@ fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
     const received_pizza = try PizzaT.unpack(received_food.Pizza_().?, .{ .allocator = alloc });
 
     try expectEqualDeep(ordered_pizza, received_pizza);
+}
+
+fn checkSizePrefixedBuffer(alloc: mem.Allocator) !void {
+    // Generate a size-prefixed flatbuffer
+    const gen_off = try checkGeneratedBuild(alloc, true);
+    const generated = gen_off[0];
+    defer alloc.free(generated);
+    const off = gen_off[1];
+
+    // Check that the size prefix is the size of monsterdata_go_wire.mon minus 4
+    const size = fb.GetSizePrefix(generated, off);
+    try testing.expectEqual(@as(usize, 220), size);
+
+    // Check that the buffer can be used as expected
+    try checkReadBuffer(alloc, generated, off, true);
+    try checkMutateBuffer(alloc, generated, off, true);
+    try checkObjectAPI(alloc, generated, off, true);
+
+    // Write generated bfufer out to a file
+    // if err := ioutil.WriteFile(outData+".sp", generated[off:], os.FileMode(0644)); err != nil {
+    //     std.log.err("failed to write file: %s", err)
+    // }
 }
 
 // verifies against the ScalarStuff schema.
@@ -1679,10 +1688,19 @@ const SortCtx = struct {
 
 const talloc = testing.allocator;
 test "all" {
-    // Verify that the Go FlatBuffers runtime library generates the
+    // Verify that the zig library generates the
     // expected bytes (does not use any schema):
     try checkByteLayout(talloc);
     try checkMutateMethods(talloc);
+
+    // Verify that panics are raised during exceptional conditions:
+    // try checkNotInObjectError();
+    // try checkStringIsNestedError();
+    // try checkByteStringIsNestedError();
+    // try checkStructIsNotInlineError();
+    // try checkFinishedBytesError();
+    // try checkSharedStrings();
+    // try checkEmptiedBuilder();
 
     // Verify that GetRootAs works for non-root tables
     try checkGetRootAsForNonRootTable(talloc);
@@ -1690,16 +1708,16 @@ test "all" {
 
     // Verify that using the generated code builds a buffer without
     // returning errors:
-    const gen_off = try checkGeneratedBuild(talloc, false, std.log.err);
+    const gen_off = try checkGeneratedBuild(talloc, false);
     const generated = gen_off[0];
     defer talloc.free(generated);
     const off = gen_off[1];
 
     // Verify that the buffer generated by zig code is readable by the
     // generated code
-    try checkReadBuffer(talloc, generated, off, false, std.log.err);
-    try checkMutateBuffer(talloc, generated, off, false, std.log.err);
-    try checkObjectAPI(talloc, generated, off, false, std.log.err);
+    try checkReadBuffer(talloc, generated, off, false);
+    try checkMutateBuffer(talloc, generated, off, false);
+    try checkObjectAPI(talloc, generated, off, false);
 
     // Verify that the buffer generated by C++ code is readable by the
     // generated zig code:
@@ -1710,9 +1728,9 @@ test "all" {
     );
     defer talloc.free(monster_data_cpp);
 
-    try checkReadBuffer(talloc, monster_data_cpp, 0, false, std.log.err);
-    try checkMutateBuffer(talloc, monster_data_cpp, 0, false, std.log.err);
-    try checkObjectAPI(talloc, monster_data_cpp, 0, false, std.log.err);
+    try checkReadBuffer(talloc, monster_data_cpp, 0, false);
+    try checkMutateBuffer(talloc, monster_data_cpp, 0, false);
+    try checkObjectAPI(talloc, monster_data_cpp, 0, false);
 
     // Verify that vtables are deduplicated when written:
     try checkVtableDeduplication(talloc);
@@ -1730,7 +1748,7 @@ test "all" {
     try checkNoNamespaceImport(talloc);
 
     // Check size-prefixed flatbuffers
-    // TODO try checkSizePrefixedBuffer(talloc)
+    try checkSizePrefixedBuffer(talloc);
 
     // Check that optional scalars works
     try checkOptionalScalars(talloc);

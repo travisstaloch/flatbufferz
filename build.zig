@@ -76,7 +76,7 @@ pub fn build(b: *std.Build) !void {
     const build_sample = b.option(
         bool,
         "build-sample",
-        "Wether to build sample",
+        "Wether to build the examples/sample_binary.zig exe",
     ) orelse false;
     if (build_sample) {
         const sample_exe = b.addExecutable(.{
@@ -101,18 +101,16 @@ pub fn build(b: *std.Build) !void {
         sample_run_step.dependOn(&sample_run_cmd.step);
     }
 
-    const flatbuffers_pkg = b.dependency("flatbuffers", .{
+    const flatbuffers_dep = b.dependency("flatbuffers", .{
         .target = target,
         .optimize = optimize,
     });
-    const flatc = flatbuffers_pkg.artifact("flatc");
+    const flatc = flatbuffers_dep.artifact("flatc");
     exe.step.dependOn(&flatc.step);
 
     const flatc_run = flatc.run();
     flatc_run.cwd = b.pathFromRoot(".");
     if (b.args) |args| flatc_run.addArgs(args);
-    const flatc_run_step = b.step("flatc", "Run flatc");
+    const flatc_run_step = b.step("flatc", "Run packaged flatc compiler");
     flatc_run_step.dependOn(&flatc_run.step);
-
-    build_options.addOption([]const u8, "flatc_exe", b.getInstallPath(.bin, "flatc"));
 }

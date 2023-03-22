@@ -1519,6 +1519,164 @@ fn checkByKey(alloc: mem.Allocator) !void {
     try testing.expectEqual(@as(u16, 0), mpStat.Count());
 }
 
+/// simple random number generator to ensure results will be the
+/// same cross platform.
+/// http://en.wikipedia.org/wiki/Park%E2%80%93Miller_random_number_generator
+const LCG = struct {
+    val: u32,
+    const InitialLCGSeed = 48271;
+    pub fn init() LCG {
+        return .{ .val = InitialLCGSeed };
+    }
+
+    pub fn reset(lcg: *LCG) void {
+        lcg.val = InitialLCGSeed;
+    }
+
+    pub fn next(lcg: *LCG) u32 {
+        const n = @truncate(u32, @as(u64, lcg.val) * @truncate(u32, @as(u64, 279470273) % @as(u64, 4294967291)));
+        lcg.val = n;
+        return n;
+    }
+};
+
+const overflowingInt32Val = fb.encode.read(i32, &.{ 0x83, 0x33, 0x33, 0x33 });
+const overflowingInt64Val = fb.encode.read(i64, &.{ 0x84, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44 });
+
+fn checkFuzz(alloc: mem.Allocator, fuzzFields: u32, fuzzObjects: u32) !void {
+    // Values we're testing against: chosen to ensure no bits get chopped
+    // off anywhere, and also be different from eachother.
+    const boolVal = true;
+    const int8Val: i8 = -127; // 0x81
+    const uint8Val: u8 = 0xFF;
+    const int16Val: i16 = -32222; // 0x8222
+    const uint16Val: u16 = 0xFEEE;
+    const int32Val: i32 = overflowingInt32Val;
+    const uint32Val: u32 = 0xFDDDDDDD;
+    const int64Val: i64 = overflowingInt64Val;
+    const uint64Val: u64 = 0xFCCCCCCCCCCCCCCC;
+    const float32Val: f32 = 3.14159;
+    const float64Val: f64 = 3.14159265359;
+
+    const testValuesMax = 11; // hardcoded to the number of scalar types
+
+    var builder = Builder.init(alloc);
+    defer builder.deinitAll();
+    var l = LCG.init();
+
+    var objects = try alloc.alloc(u32, fuzzObjects);
+    defer alloc.free(objects);
+
+    // Generate fuzzObjects random objects each consisting of
+    // fuzzFields fields, each of a random type.
+    for (0..fuzzObjects) |i| {
+        try builder.startObject(fuzzFields);
+
+        for (0..fuzzFields) |f_| {
+            const f = @intCast(u32, f_);
+            const choice = l.next() % testValuesMax;
+            try switch (choice) {
+                0 => builder.prependSlot(bool, f, boolVal, false),
+                1 => builder.prependSlot(i8, f, int8Val, 0),
+                2 => builder.prependSlot(u8, f, uint8Val, 0),
+                3 => builder.prependSlot(i16, f, int16Val, 0),
+                4 => builder.prependSlot(u16, f, uint16Val, 0),
+                5 => builder.prependSlot(i32, f, int32Val, 0),
+                6 => builder.prependSlot(u32, f, uint32Val, 0),
+                7 => builder.prependSlot(i64, f, int64Val, 0),
+                8 => builder.prependSlot(u64, f, uint64Val, 0),
+                9 => builder.prependSlot(f32, f, float32Val, 0),
+                10 => builder.prependSlot(f64, f, float64Val, 0),
+                else => unreachable,
+            };
+        }
+
+        const off = try builder.endObject();
+
+        // store the offset from the end of the builder buffer,
+        // since it will keep growing:
+        objects[i] = off;
+    }
+
+    // Do some bookkeeping to generate stats on fuzzes:
+    var stats = std.StringArrayHashMap(i32).init(alloc);
+    defer stats.deinit();
+
+    const _check = struct {
+        fn func(desc: []const u8, want: anytype, got: anytype, stats_: *std.StringArrayHashMap(i32)) !void {
+            const gop = try stats_.getOrPut(desc);
+            if (!gop.found_existing) gop.value_ptr.* = 0;
+            gop.value_ptr.* += 1;
+            try testing.expectEqual(want, got);
+        }
+    }.func;
+
+    l = LCG.init(); // Reset.
+
+    // Test that all objects we generated are readable and return the
+    // expected values. We generate random objects in the same order
+    // so this is deterministic.
+    for (0..fuzzObjects) |i| {
+        const table = fb.Table{
+            .bytes = builder.bytes.items,
+            .pos = @intCast(u32, builder.bytes.items.len) - objects[i],
+        };
+
+        for (0..fuzzFields) |j| {
+            const f = @intCast(u16, (fb.encode.vtable_metadata_fields + j) * fb.Builder.size_u16);
+            const choice = l.next() % testValuesMax;
+
+            switch (choice) {
+                0 => try _check("bool", boolVal, table.getSlot(bool, f, false), &stats),
+                1 => try _check("int8", int8Val, table.getSlot(i8, f, 0), &stats),
+                2 => try _check("uint8", uint8Val, table.getSlot(u8, f, 0), &stats),
+                3 => try _check("int16", int16Val, table.getSlot(i16, f, 0), &stats),
+                4 => try _check("uint16", uint16Val, table.getSlot(u16, f, 0), &stats),
+                5 => try _check("int32", int32Val, table.getSlot(i32, f, 0), &stats),
+                6 => try _check("uint32", uint32Val, table.getSlot(u32, f, 0), &stats),
+                7 => try _check("int64", int64Val, table.getSlot(i64, f, 0), &stats),
+                8 => try _check("uint64", uint64Val, table.getSlot(u64, f, 0), &stats),
+                9 => try _check("float32", float32Val, table.getSlot(f32, f, 0), &stats),
+                10 => try _check("float64", float64Val, table.getSlot(f64, f, 0), &stats),
+                else => unreachable,
+            }
+        }
+    }
+
+    // If enough checks were made, verify that all scalar types were used:
+    if (fuzzFields * fuzzObjects >= testValuesMax) {
+        if (stats.count() != testValuesMax) {
+            std.log.err("fuzzing failed to test all scalar types", .{});
+            try testing.expect(false);
+        }
+    }
+
+    // Print some counts, if needed:
+    std.log.info("\nfuzzing results:\n", .{});
+    if (fuzzFields == 0 or fuzzObjects == 0)
+        std.log.info(
+            "fuzz\tfields: {}\tobjects: {}\t[none]\t{}\n",
+            .{ fuzzFields, fuzzObjects, 0 },
+        )
+    else {
+        var ctx: SortCtx = .{ .keys = stats.keys() };
+        stats.sort(ctx);
+        for (stats.keys(), 0..) |k, i| {
+            std.log.info(
+                "fuzz\tfields: {}\tobjects: {}\t{s}\t{}\n",
+                .{ fuzzFields, fuzzObjects, k, stats.values()[i] },
+            );
+        }
+    }
+}
+
+const SortCtx = struct {
+    keys: []const []const u8,
+    pub fn lessThan(self: SortCtx, a: usize, b: usize) bool {
+        return mem.lessThan(u8, self.keys[a], self.keys[b]);
+    }
+};
+
 const talloc = testing.allocator;
 test "all" {
     // Verify that the Go FlatBuffers runtime library generates the
@@ -1579,4 +1737,7 @@ test "all" {
 
     // Check that getting vector element by key works
     try checkByKey(talloc);
+
+    // Verify that various fuzzing scenarios produce a valid FlatBuffer.
+    try checkFuzz(talloc, 4, 10_000);
 }

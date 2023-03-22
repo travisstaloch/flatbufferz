@@ -1275,6 +1275,14 @@ fn newRootTypeFromBuffer(o: Object, writer: anytype) !void {
         \\
         \\
     , .{o.Name()});
+    try writer.print(
+        \\pub fn GetSizePrefixedRootAs(buf: []u8, offset: u32) {0s} {{
+        \\const n = fb.encode.read(u32, buf[offset + fb.Builder.size_u32..]);
+        \\return {0s}.init(buf, n+offset + fb.Builder.size_u32);
+        \\}}
+        \\
+        \\
+    , .{o.Name()});
 }
 
 fn initializeExisting(o: Object, writer: anytype) !void {

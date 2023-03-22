@@ -504,8 +504,8 @@ pub fn finishWithFileIdentifier(b: *Builder, rootTable: u32, fid: []const u8) !v
 /// finalizes a buffer, pointing to the given `rootTable`.
 /// The buffer is prefixed with the size of the buffer, excluding the size
 /// of the prefix itself.
-pub fn finishSizePrefixed(b: *Builder, rootTable: u32) void {
-    b.finishPrefixed(rootTable, true);
+pub fn finishSizePrefixed(b: *Builder, rootTable: u32) !void {
+    return b.finishPrefixed(rootTable, true);
 }
 
 /// finalizes a buffer, pointing to the given `rootTable`

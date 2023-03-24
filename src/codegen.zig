@@ -16,6 +16,7 @@ const BaseType = fb.idl.BaseType;
 const util = fb.util;
 const common = fb.common;
 const todo = common.todo;
+const getFieldIdxById = util.getFieldIdxById;
 const TypenameSet = std.StringHashMap(BaseType);
 const debug = false;
 
@@ -1584,16 +1585,6 @@ fn genMethod(
         "UOff(");
 }
 
-/// this allows for getting a field in declaration order rather than alphabetic order
-fn getFieldIdxById(o: Object, id: u32) ?u32 {
-    var i: u32 = 0;
-    while (i < o.FieldsLen()) : (i += 1) {
-        const field = o.Fields(i).?;
-        if (field.Id() == id) return i;
-    }
-    return null;
-}
-
 /// Recursively generate struct construction statements and instert manual
 /// padding.
 fn structBuilderBody(
@@ -2598,10 +2589,8 @@ pub fn generate(
     const content = try f.readToEndAlloc(alloc, std.math.maxInt(u16));
     defer alloc.free(content);
     const schema = Schema.GetRootAs(content, 0);
-    // const writer = zig_file.writer();
     var needs_imports = false;
-    var one_file_code = std.ArrayList(u8).init(alloc);
-    const owriter = one_file_code.writer();
+
     var imports = TypenameSet.init(alloc);
     std.log.debug("schema.EnumsLen()={}", .{schema.EnumsLen()});
     for (0..schema.EnumsLen()) |i| {
@@ -2623,22 +2612,18 @@ pub fn generate(
             _ = try ewriter.write("};\n\n");
         }
 
-        if (opts.@"gen-onefile")
-            _ = try owriter.write(enumcode.items)
-        else {
-            try imports.put(e.Name(), if (e.IsUnion()) .UNION else e.UnderlyingType().?.BaseType());
-            try saveType(
-                gen_path,
-                bfbs_path,
-                decl_file,
-                basename,
-                e.Name(),
-                enumcode.items,
-                needs_imports,
-                imports,
-                .enum_,
-            );
-        }
+        try imports.put(e.Name(), if (e.IsUnion()) .UNION else e.UnderlyingType().?.BaseType());
+        try saveType(
+            gen_path,
+            bfbs_path,
+            decl_file,
+            basename,
+            e.Name(),
+            enumcode.items,
+            needs_imports,
+            imports,
+            .enum_,
+        );
     }
     std.log.debug("schema.ObjectsLen()={}", .{schema.ObjectsLen()});
     for (0..schema.ObjectsLen()) |i| {
@@ -2654,22 +2639,18 @@ pub fn generate(
         imports.clearRetainingCapacity();
         try genStruct(o, schema, !opts.@"no-gen-object-api", &imports, swriter);
 
-        if (opts.@"gen-onefile")
-            _ = try owriter.write(structcode.items)
-        else {
-            try imports.put(o.Name(), .STRUCT);
-            try saveType(
-                gen_path,
-                bfbs_path,
-                decl_file,
-                basename,
-                o.Name(),
-                structcode.items,
-                needs_imports,
-                imports,
-                .struct_,
-            );
-        }
+        try imports.put(o.Name(), .STRUCT);
+        try saveType(
+            gen_path,
+            bfbs_path,
+            decl_file,
+            basename,
+            o.Name(),
+            structcode.items,
+            needs_imports,
+            imports,
+            .struct_,
+        );
     }
 
     // std.debug.print("{s}\n", .{one_file_code.items});

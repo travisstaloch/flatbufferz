@@ -30,3 +30,13 @@ pub fn toCamelCase(input: []const u8, first: bool, writer: anytype) !void {
             c);
     }
 }
+
+/// get a field in declaration order rather than alphabetic order
+pub fn getFieldIdxById(o: anytype, id: u32) ?u32 {
+    var i: u32 = 0;
+    while (i < o.FieldsLen()) : (i += 1) {
+        const field = o.Fields(i).?;
+        if (field.Id() == id) return i;
+    }
+    return null;
+}

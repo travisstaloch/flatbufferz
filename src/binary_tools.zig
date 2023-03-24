@@ -38,18 +38,17 @@ pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: anytype
         try writeAttributes(o, writer, .{ .write_parens = true });
         try writer.print("{{ // bytesize={} \n", .{o.Bytesize()});
         for (0..o.FieldsLen()) |j| {
-            const field = o.Fields(j).?;
+            const field = o.Fields(fb.util.getFieldIdxById(o, @intCast(u32, j)).?).?;
             try writeDocumentation(field, writer);
             try writer.print("  {s}: {s}", .{ field.Name(), @tagName(field.Type().?.BaseType()) });
             if (field.HasDefaultInteger())
                 try writer.print(" = {}", .{field.DefaultInteger()});
 
             try writeAttributes(field, writer, .{ .write_parens = true });
-            try writer.print("; //  {s}{s} {}\n", .{
-                if (field.Optional()) "optional" else "",
-                if (field.Required()) "required" else "",
-                field.Offset(),
-            });
+            try writer.print("; // offset={}", .{field.Offset()});
+            if (field.Optional()) _ = try writer.write(" optional");
+            if (field.Required()) _ = try writer.write(" required");
+            _ = try writer.write("\n");
         }
         try writer.print("}}\n", .{});
     }

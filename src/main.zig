@@ -22,7 +22,7 @@ const clap_params = clap.parseParamsComptime(
     \\--bfbs-to-fbs           Interpret positionals as .bfbs files and convert them to .fbs.  Prints to stdout.
     \\-o, --output-path <str> Path to write generated content to
     \\-I, --include-dir <str>... Adds an include directory which gets passed on to flatc.
-    \\--gen-onefile           Write all output to a single file.
+    // \\--gen-onefile           Write all output to a single file.
     \\--no-gen-object-api     Don't generate an additional object-based API.
     //    \\--keep-prefix           Keep original prefix of schema include statements.
     \\<str>...                Files
@@ -69,6 +69,11 @@ pub fn main() !void {
             // "--bfbs-filenames", // TODO consider providing this arg?
         });
         for (res.args.@"include-dir") |inc| try argv.appendSlice(&.{ "-I", inc });
+
+        if (res.positionals.len == 0) {
+            try usage(&clap_params, res);
+            return error.NoPositionals;
+        }
 
         const gen_path = res.args.@"output-path" orelse "";
         for (res.positionals, 0..) |filename, i| {

@@ -12,7 +12,7 @@ const EnumVal = refl.EnumVal;
 const Object = refl.Object;
 const Field = refl.Field;
 const Type = refl.Type;
-const BaseType = fb.idl.BaseType;
+const BaseType = refl.BaseType;
 const util = fb.util;
 const common = fb.common;
 const todo = common.todo;
@@ -32,19 +32,20 @@ fn genComment(e: anytype, comment_type: enum { doc, normal }, writer: anytype) !
 
 fn zigScalarTypename(base_type: BaseType) []const u8 {
     return switch (base_type) {
-        .BOOL => "bool",
-        .CHAR => "i8",
-        .UCHAR => "u8",
-        .SHORT => "i16",
-        .USHORT => "u16",
-        .INT => "i32",
-        .UINT => "u32",
-        .LONG => "i64",
-        .ULONG => "u64",
-        .FLOAT => "f32",
-        .DOUBLE => "f64",
-        .STRING => "[]const u8",
-        .VECTOR, .STRUCT, .UNION, .ARRAY, .UTYPE, .NONE => common.panicf("zigScalarTypename() unexpected type: {}", .{base_type}),
+        .Bool => "bool",
+        .Byte => "i8",
+        .UByte => "u8",
+        .Short => "i16",
+        .UShort => "u16",
+        .Int => "i32",
+        .UInt => "u32",
+        .Long => "i64",
+        .ULong => "u64",
+        .Float => "f32",
+        .Double => "f64",
+        .String => "[]const u8",
+        .Vector, .Obj, .Union, .Array, .UType, .None => common.panicf("zigScalarTypename() unexpected type: {}", .{base_type}),
+        .MaxBaseType => unreachable,
     };
 }
 
@@ -53,18 +54,18 @@ pub const scalar_sizes = blk: {
     var result: [tags.len]?u32 = undefined;
     inline for (tags, 0..) |tag, i| {
         result[i] = switch (tag) {
-            .BOOL => 1,
-            .CHAR => 1,
-            .UCHAR => 1,
-            .SHORT => 2,
-            .USHORT => 2,
-            .INT => 4,
-            .UINT => 4,
-            .LONG => 8,
-            .ULONG => 8,
-            .FLOAT => 4,
-            .DOUBLE => 8,
-            .STRING => 4, // defined as sizeof(Offset<void>) (== 4) in idl_gen_go.cpp
+            .Bool => 1,
+            .Byte => 1,
+            .UByte => 1,
+            .Short => 2,
+            .UShort => 2,
+            .Int => 4,
+            .UInt => 4,
+            .Long => 8,
+            .ULong => 8,
+            .Float => 4,
+            .Double => 8,
+            .String => 4, // defined as sizeof(Offset<void>) (== 4) in idl_gen_go.cpp
             else => null,
         };
     }
@@ -140,37 +141,37 @@ const TypeFmt = struct {
         const mode = tnf.mode;
         const imports = tnf.imports;
         const base_ty = ty.BaseType();
-        if ((base_ty.isScalar() and ty.Index() != -1) or base_ty == .UNION) {
+        if ((fb.idl.isScalar(base_ty) and ty.Index() != -1) or base_ty == .Union) {
             const e = schema.Enums(@intCast(u32, ty.Index())).?;
             const name = switch (mode) {
                 .keep_ns => e.Name(),
                 .skip_ns => lastName(e.Name()),
             };
             try imports.put(e.Name(), base_ty);
-            if (tnf.opts.is_optional and base_ty.isScalar())
+            if (tnf.opts.is_optional and fb.idl.isScalar(base_ty))
                 try writer.writeByte('?');
             _ = try writer.write(name);
-        } else if (base_ty.isScalar() or base_ty == .STRING) {
-            if (tnf.opts.is_optional and base_ty != .STRING)
+        } else if (fb.idl.isScalar(base_ty) or base_ty == .String) {
+            if (tnf.opts.is_optional and base_ty != .String)
                 try writer.writeByte('?');
             _ = try writer.write(zigScalarTypename(base_ty));
-        } else if (base_ty.isStruct()) {
+        } else if (fb.idl.isStruct(base_ty)) {
             const o = schema.Objects(@intCast(u32, ty.Index())).?;
             const name = switch (mode) {
                 .keep_ns => o.Name(),
                 .skip_ns => lastName(o.Name()),
             };
             try imports.put(o.Name(), base_ty);
-            if (tnf.opts.is_optional and base_ty.isScalar())
+            if (tnf.opts.is_optional and fb.idl.isScalar(base_ty))
                 try writer.writeByte('?');
             _ = try writer.write(name);
-        } else if (base_ty == .NONE) {
+        } else if (base_ty == .None) {
             _ = try writer.write("void");
-        } else if (base_ty == .VECTOR) {
+        } else if (base_ty == .Vector) {
             const ele = ty.Element();
-            if (ele.isScalar() or ele == .STRING)
+            if (fb.idl.isScalar(ele) or ele == .String)
                 _ = try writer.write(zigScalarTypename(ele))
-            else if (ele.isStruct()) {
+            else if (fb.idl.isStruct(ele)) {
                 const o = schema.Objects(@intCast(u32, ty.Index())).?;
                 const name = switch (mode) {
                     .keep_ns => o.Name(),
@@ -198,7 +199,7 @@ fn genEnumType(
         imports,
         .{},
     )});
-    if (base_type.isUnion() or base_type == .UTYPE)
+    if (fb.idl.isUnion(base_type) or base_type == .UType)
         _ = try writer.write(" = union(enum) {\n")
     else
         try writer.print(
@@ -240,7 +241,7 @@ fn genEnum(
         while (i < e.ValuesLen()) : (i += 1) {
             const ev = e.Values(i).?;
             try genComment(ev, .doc, writer);
-            if (base_type.isUnion() or base_type == .UTYPE)
+            if (fb.idl.isUnion(base_type) or base_type == .UType)
                 try unionMember(e, ev, schema, writer)
             else
                 try enumMember(e, ev, writer);
@@ -276,7 +277,7 @@ fn genNativeUnion(
             const utype = ev.UnionType().?;
             const base_ty = utype.BaseType();
             try writer.print("{s}: ", .{ev.Name()});
-            if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("?*");
+            if (base_ty == .Obj or base_ty == .Union) _ = try writer.write("?*");
             try writer.print("{}", .{TypeFmt.init(
                 utype,
                 schema,
@@ -284,7 +285,7 @@ fn genNativeUnion(
                 imports,
                 .{},
             )});
-            if (base_ty == .STRUCT or base_ty == .UNION) _ = try writer.write("T");
+            if (base_ty == .Obj or base_ty == .Union) _ = try writer.write("T");
             _ = try writer.write(",\n");
         }
     }
@@ -303,7 +304,7 @@ fn genNativeUnion(
             const name = ev.Name();
             if (ev.Value() == 0)
                 try writer.print(".{s} => {{}},\n", .{name})
-            else if (base_ty == .STRUCT)
+            else if (base_ty == .Obj)
                 try writer.print(
                     \\.{0s} => |mptr| if (mptr) |x| {{
                     \\x.deinit(allocator);
@@ -584,7 +585,7 @@ fn writeNs(
                         \\const {0s} = @import("{3}{1s}{0s}{2s}").{0s};
                         \\
                     , .{ full_name, path, extension, dotsfmt });
-                    if (base_ty == .STRUCT or base_ty == .UTYPE)
+                    if (base_ty == .Obj or base_ty == .UType)
                         try writer.print(
                             \\const {0s}T = @import("{3}{1s}{0s}{2s}").{0s}T;
                             \\
@@ -603,7 +604,7 @@ fn writeNs(
                             \\const {0s} = @import("{2}{0s}{1s}").{0s};
                             \\
                         , .{ full_name, extension, dots_fmt });
-                        if (base_ty == .STRUCT or base_ty == .UTYPE)
+                        if (base_ty == .Obj or base_ty == .UType)
                             try writer.print(
                                 \\const {0s}T = @import("{2}{0s}{1s}").{0s}T;
                                 \\
@@ -702,19 +703,19 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
             if (field.Deprecated()) continue;
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
-            if (field_base_ty.isScalar()) continue;
+            if (fb.idl.isScalar(field_base_ty)) continue;
             const fname_orig = field.Name();
-            if (mem.endsWith(u8, fname_orig, "_type") and field_base_ty == .UTYPE)
+            if (mem.endsWith(u8, fname_orig, "_type") and field_base_ty == .UType)
                 continue;
             const fname_off = FmtWithSuffix("_off"){ .name = fname_orig };
-            if (field_base_ty == .STRING) {
+            if (field_base_ty == .String) {
                 try writer.print(
                     \\const {0s} = if (rcv.{1s}.len != 0) try __builder.createString(rcv.{1s}) else 0;
                     \\
                 , .{ fname_off, fieldNameFmt(fname_orig, imports) });
-            } else if (field_base_ty.isVector() and
-                field_ty.Element() == .UCHAR and
-                !field_base_ty.isUnion())
+            } else if (fb.idl.isVector(field_base_ty) and
+                field_ty.Element() == .UByte and
+                !fb.idl.isUnion(field_base_ty))
             {
                 if (field_ty.Index() == -1)
                     try writer.print(
@@ -732,7 +733,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         \\0;
                         \\
                     , .{ fname_off, fieldNameFmt(fname_orig, imports) });
-            } else if (field_base_ty.isVector()) {
+            } else if (fb.idl.isVector(field_base_ty)) {
                 const fname_len = FmtWithSuffix("_len"){ .name = fname_orig };
                 try writer.print(
                     \\var {0s}: u32 = 0;
@@ -741,7 +742,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     \\
                 , .{ fname_off, fieldNameFmt(fname_orig, imports), fname_len });
                 const fty_ele = field_ty.Element();
-                if (fty_ele == .STRING) {
+                if (fty_ele == .String) {
                     try writer.print(
                         \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @bitCast(u32, {0s}));
                         \\__tmp_offsets.items.len = @bitCast(u32, {0s});
@@ -750,7 +751,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         \\}}
                         \\
                     , .{ fname_len, fieldNameFmt(fname_orig, imports) });
-                } else if (fty_ele == .STRUCT and !isStruct(field_ty.Index(), schema)) {
+                } else if (fty_ele == .Obj and !isStruct(field_ty.Index(), schema)) {
                     const fty_fmt = TypeFmt.init(
                         field_ty,
                         schema,
@@ -776,12 +777,12 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     \\while (j >= 0) : (j -= 1) {{
                     \\
                 , .{ struct_type, fname_camel_upper, fname_len });
-                if (fty_ele.isScalar()) {
+                if (fb.idl.isScalar(fty_ele)) {
                     try writer.print(
                         "try __builder.prepend({s}, rcv.{s}.items[@bitCast(u32, j)]);\n",
                         .{ zigScalarTypename(fty_ele), fieldNameFmt(fname_orig, imports) },
                     );
-                } else if (fty_ele == .STRUCT and isStruct(field_ty.Index(), schema)) {
+                } else if (fty_ele == .Obj and isStruct(field_ty.Index(), schema)) {
                     try writer.print("_ = try rcv.{s}.items[@bitCast(u32, j)].pack(__builder, __pack_opts);\n", .{fname_orig});
                 } else {
                     try writer.print("try __builder.prependUOff(__tmp_offsets.items[@bitCast(u32, j)]);", .{});
@@ -793,7 +794,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     \\}}
                     \\
                 , .{ fname_off, fname_len });
-            } else if (field_base_ty == .STRUCT) {
+            } else if (field_base_ty == .Obj) {
                 if (isStruct(field_ty.Index(), schema)) continue;
                 try writer.print(
                     \\const {0s} = if (rcv.{1s}) |x| try x.pack(__builder, __pack_opts) else 0;
@@ -801,7 +802,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 ,
                     .{ fname_off, fieldNameFmt(fname_orig, imports) },
                 );
-            } else if (field_base_ty == .UNION) {
+            } else if (field_base_ty == .Union) {
                 try writer.print(
                     "const {0s} = try rcv.{1s}.pack(__builder, __pack_opts);\n",
                     .{ fname_off, fieldNameFmt(fname_orig, imports) },
@@ -821,12 +822,12 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
             const field_ty = field.Type().?;
             const field_base_ty = field_ty.BaseType();
             const fname_orig = field.Name();
-            if (mem.endsWith(u8, fname_orig, "_type") and field_base_ty == .UTYPE)
+            if (mem.endsWith(u8, fname_orig, "_type") and field_base_ty == .UType)
                 continue;
             const fname_off = FmtWithSuffix("_off"){ .name = fname_orig };
             const fname_camel_upper = camelUpperFmt(fname_orig, imports);
-            if (field_base_ty.isScalar()) {
-                if (field_base_ty != .UNION) {
+            if (fb.idl.isScalar(field_base_ty)) {
+                if (field_base_ty != .Union) {
                     if (field.Optional())
                         try writer.print(
                             \\if (rcv.{2s}) |x| try {0s}.Add{1s}(__builder, x);
@@ -841,12 +842,12 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         );
                 }
             } else {
-                if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
+                if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema)) {
                     try writer.print(
                         "const {0s} = if (rcv.{1s}) |x| try x.pack(__builder, __pack_opts) else 0;\n",
                         .{ fname_off, fieldNameFmt(fname_orig, imports) },
                     );
-                } else if (field_base_ty == .UNION) {
+                } else if (field_base_ty == .Union) {
                     try writer.print(
                         \\try {0s}.Add{1s}Type(__builder, rcv.{2s});
                         \\
@@ -854,7 +855,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         .{ struct_type, fname_camel_upper, fieldNameFmt(fname_orig, imports) },
                     );
                 }
-                if (!(field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)))
+                if (!(field_base_ty == .Obj and isStruct(field_ty.Index(), schema)))
                     _ = try writer.write("try ");
                 try writer.print(
                     "{s}.Add{s}(__builder, {s});\n",
@@ -903,7 +904,7 @@ fn genNativeTableUnpack(
                 field_ty.Element(),
                 field_ty.Index(),
             });
-            if (mem.endsWith(u8, fname.fname, "_type") and field_base_ty == .UTYPE)
+            if (mem.endsWith(u8, fname.fname, "_type") and field_base_ty == .UType)
                 continue;
             const fty_fmt = TypeFmt.init(
                 field_ty,
@@ -912,15 +913,15 @@ fn genNativeTableUnpack(
                 imports,
                 .{ .is_optional = field.Optional() },
             );
-            if ((field_base_ty.isScalar() or field_base_ty == .STRING) and
-                field_base_ty != .UNION)
+            if ((fb.idl.isScalar(field_base_ty) or field_base_ty == .String) and
+                field_base_ty != .Union)
             {
                 try writer.print(
                     "t.{s} = rcv.{s}();\n",
                     .{ fname, fname_upper_camel },
                 );
-            } else if (field_base_ty == .VECTOR and
-                field_ty.Element() == .UCHAR and
+            } else if (field_base_ty == .Vector and
+                field_ty.Element() == .UByte and
                 field_ty.Index() == -1)
             {
                 try writer.print(
@@ -929,10 +930,10 @@ fn genNativeTableUnpack(
                 ,
                     .{ fname, fname_upper_camel },
                 );
-            } else if (field_base_ty == .VECTOR) {
+            } else if (field_base_ty == .Vector) {
                 const fname_len = FmtWithSuffix("_len"){ .name = field.Name() };
                 const ele = field_ty.Element();
-                if (ele == .STRUCT)
+                if (ele == .Obj)
                     try writer.print(
                         \\const {3} = rcv.{1s}Len();
                         \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
@@ -956,9 +957,9 @@ fn genNativeTableUnpack(
 
                 try writer.print("t.{s}.items[j] = ", .{fname});
                 const fty_ele = field_ty.Element();
-                if (fty_ele.isScalar() or fty_ele == .STRING) {
+                if (fb.idl.isScalar(fty_ele) or fty_ele == .String) {
                     try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
-                } else if (fty_ele == .STRUCT) {
+                } else if (fty_ele == .Obj) {
                     try writer.print("try {}T.unpack(x, __pack_opts)", .{fty_fmt});
                 } else {
                     // TODO(iceboy): Support vector of unions.
@@ -970,7 +971,7 @@ fn genNativeTableUnpack(
                     \\}
                     \\
                 );
-            } else if (field_base_ty == .STRUCT) {
+            } else if (field_base_ty == .Obj) {
                 try writer.print(
                     \\if (rcv.{0}()) |x| {{
                     \\if (t.{2s} == null) {{
@@ -981,7 +982,7 @@ fn genNativeTableUnpack(
                     \\}}
                     \\
                 , .{ fname_upper_camel, fty_fmt, fname });
-            } else if (field_base_ty == .UNION) {
+            } else if (field_base_ty == .Union) {
                 try writer.print(
                     \\if (rcv.{1}()) |_tab| {{
                     \\t.{0s} = try {2}T.unpack(rcv.{1}Type(), _tab, __pack_opts);
@@ -1038,7 +1039,7 @@ fn structPackArgs(
     while (i < o.FieldsLen()) : (i += 1) {
         const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
-        if (field_ty.BaseType() == .STRUCT) {
+        if (field_ty.BaseType() == .Obj) {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
             const len = nameprefix.len;
             defer nameprefix.len = len;
@@ -1063,7 +1064,7 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
         const fname = fieldNameFmt(field.Name(), imports);
         const fname_camel_upper = camelUpperFmt(field.Name(), imports);
 
-        if (field_ty.BaseType() == .STRUCT) {
+        if (field_ty.BaseType() == .Obj) {
             const fty_fmt = TypeFmt.init(
                 field_ty,
                 schema,
@@ -1113,7 +1114,7 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
         const fname = fieldNameFmt(field.Name(), imports);
 
         switch (field_base_ty) {
-            .STRING => {
+            .String => {
                 // TODO __pack_opts.dupe_strings - allow user to choose wether
                 // to dupe and free strings using __pack_opts.allocator
                 try writer.print(
@@ -1122,7 +1123,7 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
                     \\
                 , .{fname});
             },
-            .STRUCT => {
+            .Obj => {
                 try writer.print(
                     \\if (self.{0s}) |x| {{
                     \\x.deinit(allocator);
@@ -1131,9 +1132,9 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
                     \\
                 , .{fname});
             },
-            .VECTOR => {
+            .Vector => {
                 const ele = field_ty.Element();
-                if (ele == .STRING)
+                if (ele == .String)
                     try writer.print(
                         \\// TODO __pack_opts.dupe_strings
                         \\//for (self.{0s}.items) |it| {{
@@ -1142,12 +1143,12 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
                         \\//}}
                         \\
                     , .{fname})
-                else if (!ele.isScalar())
+                else if (!fb.idl.isScalar(ele))
                     try writer.print(
                         \\for (self.{0s}.items) |*it| it.deinit(allocator);
                         \\
                     , .{fname});
-                if (ele == .UCHAR and field_ty.Index() == -1)
+                if (ele == .UByte and field_ty.Index() == -1)
                     try writer.print(
                         \\// TODO __pack_opts.dupe_strings
                         \\// allocator.free(self.{0s});
@@ -1159,7 +1160,7 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
                         \\
                     , .{fname});
             },
-            .UNION => {
+            .Union => {
                 try writer.print(
                     \\self.{0s}.deinit(allocator);
                     \\
@@ -1186,9 +1187,9 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         if (field.Deprecated()) continue;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
-        if (field_base_ty.isScalar() and field_base_ty == .UNION) continue;
+        if (fb.idl.isScalar(field_base_ty) and field_base_ty == .Union) continue;
         const fname = field.Name();
-        if (field_base_ty == .UTYPE and mem.endsWith(u8, fname, "_type")) continue;
+        if (field_base_ty == .UType and mem.endsWith(u8, fname, "_type")) continue;
 
         try genComment(field, .doc, writer);
         try writer.print("{}: ", .{fieldNameFmt(fname, imports)});
@@ -1199,45 +1200,57 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
             imports,
             .{ .is_optional = field.Optional() },
         );
-        if (field_base_ty.isVector()) {
+        if (fb.idl.isVector(field_base_ty)) {
             const ele = field_ty.Element();
-            if (ele == .UCHAR and field_ty.Index() == -1) {
+            if (ele == .UByte and field_ty.Index() == -1) {
                 _ = try writer.write(
                     \\[]const u8 = ""
                 );
             } else {
                 try writer.print("std.ArrayListUnmanaged({}", .{fty_fmt});
-                if (ele == .STRUCT or ele == .UNION) _ = try writer.write("T");
+                if (ele == .Obj or ele == .Union) _ = try writer.write("T");
                 _ = try writer.write(") = .{}");
             }
         } else {
             // gen field type
-            if (field_base_ty == .STRUCT) _ = try writer.write("?*");
+            if (field_base_ty == .Obj) _ = try writer.write("?*");
             try writer.print("{}", .{fty_fmt});
-            if (field_base_ty == .STRUCT or field_base_ty == .UNION)
+            if (field_base_ty == .Obj or field_base_ty == .Union)
                 _ = try writer.write("T");
             // gen field default value
-            if (field_base_ty == .STRUCT)
+            if (field_base_ty == .Obj)
                 _ = try writer.write(" = null")
-            else if (field_base_ty == .UNION) {
+            else if (field_base_ty == .Union) {
                 try writer.print(" = @intToEnum({}.Tag , 0)", .{fty_fmt});
-            } else if (field_base_ty == .STRING) {
+            } else if (field_base_ty == .String) {
                 _ = try writer.write(" = \"\"");
             } else {
                 _ = try writer.write(" = ");
                 const field_ty_idx = field_ty.Index();
                 if (field_ty_idx == -1)
                     try genConstant(field, field_base_ty, schema, imports, writer)
-                else { // this is an enum type. use DefaultInteger() or else undefined
-                    if (field.HasDefaultInteger())
+                else { // this is an enum type. use DefaultInteger() if non-zero
+                    if (field.DefaultInteger() != 0)
                         try writer.print(
                             "@intToEnum({}, {})",
                             .{ fty_fmt, field.DefaultInteger() },
                         )
-                    else if (field.Optional())
-                        _ = try writer.write("null")
-                    else
-                        _ = try writer.write("undefined");
+                    else {
+                        // DefaultInteger() == 0.
+                        //   if field optional: null // FIXME: not sure this is correct
+                        //   else: use first declared enum value
+                        //   else: undefined
+                        const enum_ty = schema.Enums(@bitCast(u32, field_ty_idx)).?;
+                        if (field.Optional())
+                            _ = try writer.write("null")
+                        else if (enum_ty.Values(0)) |ev|
+                            try writer.print(
+                                "@intToEnum({}, {})",
+                                .{ fty_fmt, ev.Value() },
+                            )
+                        else
+                            _ = try writer.write("undefined");
+                    }
                 }
             }
         }
@@ -1373,19 +1386,19 @@ fn genGetter(
     writer: anytype,
 ) !void {
     switch (ty.BaseType()) {
-        .STRING => _ = try writer.write("rcv._tab.byteVector("),
-        .UNION => _ = try writer.write("rcv._tab.union_("),
-        .VECTOR => switch (ty.Element()) {
-            .STRING => _ = try writer.write("rcv._tab.byteVector("),
-            .UNION => _ = try writer.write("rcv._tab.union_("),
-            .VECTOR => todo(".VECTOR .VECTOR", .{}),
-            .STRUCT => todo(".VECTOR .STRUCT", .{}),
+        .String => _ = try writer.write("rcv._tab.byteVector("),
+        .Union => _ = try writer.write("rcv._tab.union_("),
+        .Vector => switch (ty.Element()) {
+            .String => _ = try writer.write("rcv._tab.byteVector("),
+            .Union => _ = try writer.write("rcv._tab.union_("),
+            .Vector => todo(".Vector .Vector", .{}),
+            .Obj => todo(".Vector .Obj", .{}),
             else => |ele| {
                 _ = try writer.write("rcv._tab.read(");
-                if (ele.isScalar() or ele == .STRING) {
+                if (fb.idl.isScalar(ele) or ele == .String) {
                     _ = try writer.write(zigScalarTypename(ele));
                     _ = try writer.write(", ");
-                } else todo("genGetter .VECTOR {}", .{ele});
+                } else todo("genGetter .Vector {}", .{ele});
             },
         },
         else => |base_ty| {
@@ -1393,7 +1406,7 @@ fn genGetter(
                 "rcv._tab.read({}",
                 .{TypeFmt.init(ty, schema, .keep_ns, imports, .{})},
             );
-            if (base_ty.isUnion() or base_ty == .UTYPE)
+            if (fb.idl.isUnion(base_ty) or base_ty == .UType)
                 _ = try writer.write(".Tag");
             _ = try writer.write(", ");
         },
@@ -1412,7 +1425,7 @@ fn offsetPrefix(field: Field, writer: anytype) !void {
 }
 
 fn isScalarOptional(field: Field, field_base_ty: BaseType) bool {
-    return field_base_ty.isScalar() and field.Optional();
+    return fb.idl.isScalar(field_base_ty) and field.Optional();
 }
 
 fn genConstant(
@@ -1431,14 +1444,12 @@ fn genConstant(
         return;
     }
     switch (field_base_ty) {
-        .BOOL => {
-            const default = if (field.HasDefaultInteger())
-                field.DefaultInteger() != 0
-            else
-                false;
+        .Bool => {
+            const default = field.DefaultInteger() != 0;
+
             try writer.print("{}", .{default});
         },
-        .FLOAT => {
+        .Float => {
             const default_real = field.DefaultReal();
             if (std.math.isNan(default_real))
                 _ = try writer.write("std.math.nan(f32)")
@@ -1449,7 +1460,7 @@ fn genConstant(
             else
                 try writer.print("{}", .{default_real});
         },
-        .DOUBLE => {
+        .Double => {
             const default_real = field.DefaultReal();
             if (std.math.isNan(default_real))
                 _ = try writer.write("std.math.nan(f64)")
@@ -1460,8 +1471,8 @@ fn genConstant(
             else
                 try writer.print("{}", .{default_real});
         },
-        // FIXME: ? not sure about these values, just copied go ouptut
-        .STRUCT, .VECTOR => _ = try writer.write("0"),
+        // FIXME: not sure about these values, just copied go ouptut
+        .Obj, .Vector => _ = try writer.write("0"),
         else => {
             const field_ty = field.Type().?;
             const fty_fmt = TypeFmt.init(
@@ -1471,20 +1482,30 @@ fn genConstant(
                 imports,
                 .{ .is_optional = field.Optional() },
             );
+            // FIXME: clean this up. seems like it should be same logic as genConstant()
             if (field_ty.Index() == -1)
                 try writer.print("{}", .{field.DefaultInteger()})
-            else if (field_base_ty == .UTYPE) {
+            else if (field_base_ty == .UType) {
                 try writer.print("@intToEnum({}.Tag, {})", .{
                     fty_fmt,
                     field.DefaultInteger(),
                 });
-            } else if (field_base_ty.isInteger()) {
-                try writer.print("@intToEnum({}, {})", .{
-                    fty_fmt,
-                    field.DefaultInteger(),
-                });
+            } else if (fb.idl.isInteger(field_base_ty)) {
+                if (field.DefaultInteger() != 0)
+                    try writer.print("@intToEnum({}, {})", .{
+                        fty_fmt,
+                        field.DefaultInteger(),
+                    })
+                else {
+                    const enum_ty = schema.Enums(@bitCast(u32, field_ty.Index())).?;
+                    const ev = enum_ty.Values(0).?;
+                    try writer.print("@intToEnum({}, {})", .{
+                        fty_fmt,
+                        ev.Value(),
+                    });
+                }
             } else {
-                try writer.print("{}", .{field.DefaultInteger()});
+                try writer.print("{}\n", .{field.DefaultInteger()});
             }
         },
     }
@@ -1508,7 +1529,7 @@ fn structBuilderArgs(
         const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
-        if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
+        if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema)) {
             // Generate arguments for a struct inside a struct. To ensure names
             // don't clash, and to make it obvious these arguments are constructing
             // a nested struct, prefix the name with the field name.
@@ -1563,7 +1584,7 @@ fn genMethod(
     writer: anytype,
 ) !void {
     const field_ty = field.Type().?;
-    if (field_ty.BaseType().isScalar()) {
+    if (fb.idl.isScalar(field_ty.BaseType())) {
         try writer.print(
             "({}",
             .{TypeFmt.init(
@@ -1575,10 +1596,10 @@ fn genMethod(
             )},
         );
         const field_base_ty = field_ty.BaseType();
-        if (field_base_ty.isUnion() or field_base_ty == .UTYPE)
+        if (fb.idl.isUnion(field_base_ty) or field_base_ty == .UType)
             _ = try writer.write(".Tag");
         _ = try writer.write(", ");
-    } else _ = try writer.write(if (field_ty.BaseType() == .STRUCT and
+    } else _ = try writer.write(if (field_ty.BaseType() == .Obj and
         isStruct(field_ty.Index(), schema))
         "Struct("
     else
@@ -1614,7 +1635,7 @@ fn structBuilderBody(
             , .{padding});
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
-        if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema)) {
+        if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema)) {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
             const len = nameprefix.len;
             defer nameprefix.len = len;
@@ -1687,7 +1708,7 @@ fn genTableBuilders(
             imports,
             writer,
         );
-        if (field.Type().?.BaseType() == .VECTOR)
+        if (field.Type().?.BaseType() == .Vector)
             try buildVectorOfTable(o, field, schema, imports, writer);
     }
 
@@ -1743,12 +1764,12 @@ fn getScalarFieldOfTable(
     const field_base_ty = field_ty.BaseType();
     if (debug) try writer.print(
         "// base_ty={} isScalar()={} is_optional={} ty.Index()={} \n",
-        .{ field_base_ty, field_base_ty.isScalar(), field.Optional(), field_ty.Index() },
+        .{ field_base_ty, fb.idl.isScalar(field_base_ty), field.Optional(), field_ty.Index() },
     );
     try writer.print(
         \\pub fn {s}(rcv: {s}) {}
     , .{ fname_camel_upper, lastName(o.Name()), fty_fmt });
-    if (field_base_ty.isUnion() or field_base_ty == .UTYPE)
+    if (fb.idl.isUnion(field_base_ty) or field_base_ty == .UType)
         _ = try writer.write(".Tag");
     try offsetPrefix(field, writer);
     if (isScalarOptional(field, field_base_ty)) {
@@ -1862,7 +1883,7 @@ fn getStructFieldOfTable(
     , .{ fname_camel_upper, lastName(oname), fty_fmt });
     try offsetPrefix(field, writer);
     const field_base_ty = field_ty.BaseType();
-    if (field_base_ty == .STRUCT and isStruct(field_ty.Index(), schema))
+    if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema))
         _ = try writer.write("const x = o + rcv._tab.pos;\n")
     else
         _ = try writer.write("const x = rcv._tab.indirect(o + rcv._tab.pos);\n");
@@ -1909,16 +1930,16 @@ fn getUnionField(
 fn inlineSize(ty: Type, _: Schema) u32 {
     const base_ty = ty.BaseType();
     return switch (base_ty) {
-        .VECTOR => if (scalar_sizes[@enumToInt(ty.Element())]) |scalar_size|
+        .Vector => if (scalar_sizes[@bitCast(u8, @enumToInt(ty.Element()))]) |scalar_size|
             scalar_size
         else switch (ty.Element()) {
-            .STRUCT => blk: {
+            .Obj => blk: {
                 break :blk @bitCast(u32, ty.ElementSize());
             },
-            .VECTOR => unreachable,
-            .UNION => unreachable,
-            .ARRAY => unreachable,
-            .UTYPE => unreachable,
+            .Vector => unreachable,
+            .Union => unreachable,
+            .Array => unreachable,
+            .UType => unreachable,
             else => unreachable,
         },
 
@@ -2052,7 +2073,7 @@ fn getMemberOfVectorOfNonStruct(
     );
 
     try genGetter(field_ty, schema, imports, writer);
-    if (field_ty.BaseType() == .VECTOR and field_ty.Element() == .STRUCT and
+    if (field_ty.BaseType() == .Vector and field_ty.Element() == .Obj and
         isStruct(field_ty.Index(), schema))
         try writer.print(
             \\rcv._tab.bytes, a + @intCast(u32, j) * {});
@@ -2066,13 +2087,13 @@ fn getMemberOfVectorOfNonStruct(
             \\
         , .{inlineSize(field_ty, schema)});
     const ele_basety = field_ty.Element();
-    _ = try writer.write(if (ele_basety == .STRING)
+    _ = try writer.write(if (ele_basety == .String)
         \\return "";
         \\
-    else if (ele_basety == .BOOL)
+    else if (ele_basety == .Bool)
         \\return false;
         \\
-    else if (field_ty.BaseType() == .VECTOR and field_ty.Element() == .STRUCT)
+    else if (field_ty.BaseType() == .Vector and field_ty.Element() == .Obj)
         \\return null;
         \\
     else
@@ -2146,15 +2167,15 @@ fn buildFieldOfTable(
     , .{ fname_camel_upper, fname });
 
     const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports, .{});
-    if (!field_base_ty.isScalar() and !o.IsStruct()) {
+    if (!fb.idl.isScalar(field_base_ty) and !o.IsStruct()) {
         _ = try writer.write("u32");
-    } else if (field_base_ty.isUnion() or field_base_ty == .UTYPE) {
+    } else if (fb.idl.isUnion(field_base_ty) or field_base_ty == .UType) {
         try writer.print("{}.Tag", .{fty_fmt});
     } else {
         try writer.print("{}", .{fty_fmt});
     }
 
-    if (field_base_ty.isStruct() and isStruct(field_ty.Index(), schema))
+    if (fb.idl.isStruct(field_base_ty) and isStruct(field_ty.Index(), schema))
         _ = try writer.write(
             \\) void {
             \\__builder.prepend
@@ -2196,21 +2217,21 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *Typenam
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
-    const alignment = if (ele.isScalar() or ele == .STRING)
-        scalar_sizes[@enumToInt(ele)].?
+    const alignment = if (fb.idl.isScalar(ele) or ele == .String)
+        scalar_sizes[@bitCast(u8, @enumToInt(ele))].?
     else switch (ele) {
-        .STRUCT => blk: {
+        .Obj => blk: {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
             const minalign = o2.Minalign();
             break :blk if (minalign == -1)
-                todo("alignment .STRUCT minalign == -1 ", .{})
+                todo("alignment .Obj minalign == -1 ", .{})
             else
                 @bitCast(u32, minalign);
         },
-        .NONE,
-        .VECTOR,
-        .UNION,
-        .ARRAY,
+        .None,
+        .Vector,
+        .Union,
+        .Array,
         => todo("alignment {}", .{ele}),
         else => unreachable,
     };
@@ -2244,7 +2265,7 @@ fn genStructAccessor(
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
 
-    if (field_base_ty.isScalar()) {
+    if (fb.idl.isScalar(field_base_ty)) {
         if (o.IsStruct())
             try getScalarFieldOfStruct(
                 o,
@@ -2263,13 +2284,13 @@ fn genStructAccessor(
             );
     } else {
         switch (field_base_ty) {
-            .STRUCT => if (o.IsStruct())
+            .Obj => if (o.IsStruct())
                 try getStructFieldOfStruct(o, field, schema, imports, writer)
             else
                 try getStructFieldOfTable(o, field, schema, imports, writer),
-            .STRING => try getStringField(o, field, schema, imports, writer),
-            .VECTOR => {
-                if (field_ty.Element() == .STRUCT) {
+            .String => try getStringField(o, field, schema, imports, writer),
+            .Vector => {
+                if (field_ty.Element() == .Obj) {
                     try getMemberOfVectorOfStruct(o, field, schema, imports, writer);
                     // TODO(michaeltle): Support querying fixed struct by key.
                     // Currently, we only support keyed tables.
@@ -2303,7 +2324,7 @@ fn genStructAccessor(
                     );
                 }
             },
-            .UNION => try getUnionField(
+            .Union => try getUnionField(
                 o,
                 field,
                 schema,
@@ -2313,9 +2334,9 @@ fn genStructAccessor(
             else => unreachable,
         }
     }
-    if (field_base_ty.isVector()) {
+    if (fb.idl.isVector(field_base_ty)) {
         try getVectorLen(o, field, imports, writer);
-        if (field_ty.Element() == .UCHAR)
+        if (field_ty.Element() == .UByte)
             try getUByteSlice(o, field, imports, writer);
     }
 }
@@ -2405,14 +2426,14 @@ fn genStructMutator(
 ) !void {
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
-    if (field_base_ty.isScalar()) {
+    if (fb.idl.isScalar(field_base_ty)) {
         try if (o.IsStruct())
             mutateScalarFieldOfStruct(o, field, schema, imports, writer)
         else
             mutateScalarFieldOfTable(o, field, schema, imports, writer);
-    } else if (field_base_ty == .VECTOR) {
+    } else if (field_base_ty == .Vector) {
         const ele = field_ty.Element();
-        if (ele.isScalar())
+        if (fb.idl.isScalar(ele))
             try mutateElementOfVectorOfNonStruct(o, field, schema, imports, writer);
     }
 }
@@ -2488,7 +2509,7 @@ fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: anytype
         \\
     , .{lastName(o.Name())});
 
-    if (base_ty == .STRING)
+    if (base_ty == .String)
         try writer.print(
             \\return std.mem.lessThan(u8, obj1.{0}(), obj2.{0}());
             \\
@@ -2537,7 +2558,7 @@ fn genLookupByKey(
         \\const obj = {s}.init(buf, table_off);
         \\
     , .{olastname});
-    if (base_ty == .STRING) try writer.print(
+    if (base_ty == .String) try writer.print(
         "const order = std.mem.order(u8, obj.{}(), key);\n",
         .{fname_camel_upper},
     ) else {
@@ -2612,7 +2633,7 @@ pub fn generate(
             _ = try ewriter.write("};\n\n");
         }
 
-        try imports.put(e.Name(), if (e.IsUnion()) .UNION else e.UnderlyingType().?.BaseType());
+        try imports.put(e.Name(), if (e.IsUnion()) .Union else e.UnderlyingType().?.BaseType());
         try saveType(
             gen_path,
             bfbs_path,
@@ -2639,7 +2660,7 @@ pub fn generate(
         imports.clearRetainingCapacity();
         try genStruct(o, schema, !opts.@"no-gen-object-api", &imports, swriter);
 
-        try imports.put(o.Name(), .STRUCT);
+        try imports.put(o.Name(), .Obj);
         try saveType(
             gen_path,
             bfbs_path,

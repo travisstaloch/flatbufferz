@@ -41,7 +41,7 @@ pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: anytype
             const field = o.Fields(fb.util.getFieldIdxById(o, @intCast(u32, j)).?).?;
             try writeDocumentation(field, writer);
             try writer.print("  {s}: {s}", .{ field.Name(), @tagName(field.Type().?.BaseType()) });
-            if (field.HasDefaultInteger())
+            if (field.DefaultInteger() != 0)
                 try writer.print(" = {}", .{field.DefaultInteger()});
 
             try writeAttributes(field, writer, .{ .write_parens = true });

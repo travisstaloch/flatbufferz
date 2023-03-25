@@ -14,9 +14,9 @@ This project depends on packaged `flatc` compiler @v23.3.3, built with zig using
 zig build
 ```
 
-Optionally run tests
+Run packaged flatc
 ```console
-zig build test
+zig build flatc -- <flatc args>
 ```
 
 ### compile from .fbs files
@@ -74,7 +74,7 @@ my_exe.addModule("flatbufferz", flatbufferz_mod);
 ```
 
 # Tools
-Convert .bfbs to .fbs
+Convert .bfbs to .fbs.  :warning: --bfbs-to-fbs doesn't yet produce valid .fbs files. In its current state, it is more of a binary schema debugging tool. :warning:
 ```console
-zig-out/bin/flatc-zig -o gen gen/test.bfbs --bfbs-to-fbs
+zig-out/bin/flatc-zig gen/test.bfbs --bfbs-to-fbs
 ```

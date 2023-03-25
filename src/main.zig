@@ -56,10 +56,7 @@ pub fn main() !void {
         // setup a flatc command args used to gen .bfbs from .fbs args
         var argv = std.ArrayList([]const u8).init(alloc);
         try argv.appendSlice(&.{
-            "zig",
-            "build",
-            "flatc",
-            "--",
+            build_options.flatc_exe_path,
             "-b",
             "--schema",
             "--bfbs-comments",
@@ -95,9 +92,9 @@ pub fn main() !void {
                 // std.debug.print("stdout={s}\n", .{exec_res.stdout});
                 if (exec_res.term != .Exited or exec_res.term.Exited != 0) {
                     for (argv.items) |it| std.debug.print("{s} ", .{it});
-                    std.debug.print("\nerror: the flatc command failed\n", .{});
-                    std.debug.print("stderr: {s}\n", .{exec_res.stderr});
-                    std.debug.print("stdout: {s}\n", .{exec_res.stdout});
+                    std.debug.print("\nerror: flatc command failure:\n", .{});
+                    std.debug.print("{s}\n", .{exec_res.stderr});
+                    if (exec_res.stdout.len > 0) try stdout.print("{s}\n", .{exec_res.stdout});
                     std.os.exit(1);
                 }
 

@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) !void {
         "examples/include_test/order.fbs",
         "examples/include_test/sub/no_namespace.fbs",
         "examples/optional_scalars.fbs",
-    }, &.{ "-I", "examples/include_test", "-I", "examples/include_test/sub" });
+    }, &.{ "-I", "examples/include_test", "-I", "examples/include_test/sub" }, "flatc-zig");
     const gen_mod = b.createModule(.{
         .source_file = gen_step.module.source_file,
         .dependencies = &.{.{ .name = "flatbufferz", .module = lib_mod }},
@@ -106,10 +106,8 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const flatc = flatbuffers_dep.artifact("flatc");
-    // FIXME install() doesn't do anything. why not? would like to get the path
-    // to the flatc exe somehow and provide that path as a build option so that
-    // it can be used in main.zig
     flatc.install();
+    build_options.addOptionArtifact("flatc_exe_path", flatc);
     exe.step.dependOn(&flatc.step);
 
     const flatc_run = b.addRunArtifact(flatc);

@@ -15,16 +15,17 @@ pub const GenStep = struct {
         exe: *std.build.LibExeObjStep,
         files: []const []const u8,
         args: []const []const u8,
+        cache_subdir: []const u8,
     ) !*GenStep {
         const self = b.allocator.create(GenStep) catch unreachable;
         const cache_root = std.fs.path.resolve(
             b.allocator,
             &.{b.cache_root.path orelse "."},
         ) catch @panic("OOM");
-        const flatc_zig_path = "flatc-zig";
+
         const cache_path = try std.fs.path.join(
             b.allocator,
-            &.{ cache_root, flatc_zig_path },
+            &.{ cache_root, cache_subdir },
         );
         const lib_path = try std.fs.path.join(
             b.allocator,
@@ -56,7 +57,7 @@ pub const GenStep = struct {
         const run_cmd = exe.run();
         run_cmd.step.dependOn(&exe.step);
 
-        try b.cache_root.handle.makePath(flatc_zig_path);
+        try b.cache_root.handle.makePath(cache_subdir);
 
         run_cmd.addArgs(&.{ "-o", cache_path });
         run_cmd.addArgs(args);

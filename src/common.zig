@@ -1,7 +1,14 @@
 const std = @import("std");
 
-pub const PackError = error{} ||
+/// set of all possible errors in Builder.zig
+pub const BuilderError = error{
+    InvalidOffset,
+    InvalidNesting,
+    NotFinished,
+} ||
     std.mem.Allocator.Error;
+
+pub const PackError = BuilderError;
 
 pub const PackOptions = struct {
     allocator: ?std.mem.Allocator = null,

@@ -96,16 +96,16 @@ pub fn reset(b: *Builder) void {
     b.finished = false;
 }
 
-/// FinishedBytes returns a pointer to the written data in the byte buffer.
-/// Panics if the builder is not in a finished state (which is caused by calling
-pub fn finishedBytes(b: *Builder) []u8 {
-    b.assertFinished();
+/// returns a pointer to the written data in the byte buffer.
+/// errors if the builder is not in a finished state (which is caused by calling
+pub fn finishedBytes(b: *Builder) ![]u8 {
+    try b.checkFinished();
     return b.bytes.items[b.head..];
 }
 
 /// initializes bookkeeping for writing a new object.
 pub fn startObject(b: *Builder, numfields: u32) !void {
-    b.assertNotNested();
+    try b.checkNotNested();
     b.nested = true;
     try b.vtable.ensureTotalCapacity(b.alloc, numfields);
     b.vtable.items.len = numfields;
@@ -228,17 +228,30 @@ pub fn writeVtable(b: *Builder) !u32 {
 
 /// writes data necessary to finish object construction.
 pub fn endObject(b: *Builder) !u32 {
-    b.assertNested();
+    try b.checkNested();
     const n = try b.writeVtable();
     b.nested = false;
     return n;
+}
+
+fn err(
+    comptime fmt: []const u8,
+    args: anytype,
+    e: common.BuilderError,
+) common.BuilderError {
+    std.log.err(fmt, args);
+    return e;
 }
 
 /// Doubles the size of the b.bytes, and copies the old data towards the
 /// end of the new byteslice (since we build the buffer backwards).
 pub fn growByteBuffer(b: *Builder) !void {
     if ((b.bytes.items.len & 0xC0000000) != 0)
-        @panic("cannot grow buffer beyond 2 gigabytes");
+        return err(
+            "cannot grow buffer beyond 2 gigabytes",
+            .{},
+            error.OutOfMemory,
+        );
 
     var new_len = b.bytes.items.len * 2;
     if (new_len == 0) new_len = 32;
@@ -292,7 +305,8 @@ pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
 /// prepends a i32, relative to where it will be written.
 pub fn prependSOff(b: *Builder, off: i32) !void {
     try b.prep(size_i32, 0); // Ensure alignment is already done.
-    if (off > b.offset()) @panic("unreachable: off <= b.offset()");
+    if (off > b.offset())
+        return err("unreachable: off > b.offset()", .{}, error.InvalidOffset);
 
     const off2 = @bitCast(i32, b.offset()) - off + size_i32;
     b.place(i32, off2);
@@ -302,7 +316,8 @@ pub fn prependSOff(b: *Builder, off: i32) !void {
 pub fn prependUOff(b: *Builder, off: u32) !void {
     std.log.debug("prependUOff off={}", .{off});
     try b.prep(size_u32, 0); // Ensure alignment is already done.
-    if (off > b.offset()) @panic("unreachable: off <= b.offset()");
+    if (off > b.offset())
+        return err("unreachable: off > b.offset()", .{}, error.InvalidOffset);
 
     const off2 = b.offset() - off + size_u32;
     b.place(u32, off2);
@@ -314,7 +329,7 @@ pub fn prependUOff(b: *Builder, off: u32) !void {
 ///   <u32: number of elements in this vector>
 ///   <T: data>+, where T is the type of elements of this vector.
 pub fn startVector(b: *Builder, elem_size: i32, num_elems: i32, alignment: i32) !u32 {
-    b.assertNotNested();
+    try b.checkNotNested();
     b.nested = true;
     try b.prep(size_u32, elem_size * num_elems);
     try b.prep(alignment, elem_size * num_elems); // Just in case alignment > int.
@@ -322,8 +337,8 @@ pub fn startVector(b: *Builder, elem_size: i32, num_elems: i32, alignment: i32) 
 }
 
 /// writes data necessary to finish vector construction.
-pub fn endVector(b: *Builder, vector_num_elems: u32) u32 {
-    b.assertNested();
+pub fn endVector(b: *Builder, vector_num_elems: u32) !u32 {
+    try b.checkNested();
 
     // we already made space for this, so write without prependU32
     b.place(u32, vector_num_elems);
@@ -334,7 +349,7 @@ pub fn endVector(b: *Builder, vector_num_elems: u32) u32 {
 
 /// serializes slice of table offsets into a vector.
 pub fn createVectorOfTables(b: *Builder, offsets: []const u32) !u32 {
-    b.assertNotNested();
+    try b.checkNotNested();
     _ = try b.startVector(4, @intCast(i32, offsets.len), 4);
     var i = @bitCast(isize, offsets.len) - 1;
     while (i >= 0) : (i -= 1)
@@ -371,7 +386,7 @@ pub fn createSharedString(b: *Builder, s: []const u8) !u32 {
 
 /// writes a null-terminated []const u8 as a vector.
 pub fn createString(b: *Builder, s: []const u8) !u32 {
-    b.assertNotNested();
+    try b.checkNotNested();
     b.nested = true;
     b.debug("createString() '{s}'", .{s});
     try b.prep(size_u32, @intCast(i32, s.len + 1) * size_byte);
@@ -387,7 +402,7 @@ pub fn createString(b: *Builder, s: []const u8) !u32 {
 
 /// writes a byte slice as a []const u8 (null-terminated).
 pub fn createByteString(b: *Builder, s: []const u8) !u32 {
-    b.assertNotNested();
+    try b.checkNotNested();
     b.nested = true;
 
     try b.prep(size_u32, (@intCast(i32, s.len) + 1) * size_byte);
@@ -403,7 +418,7 @@ pub fn createByteString(b: *Builder, s: []const u8) !u32 {
 
 /// write a byte vector
 pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
-    b.assertNotNested();
+    try b.checkNotNested();
     b.nested = true;
 
     try b.prep(size_u32, @intCast(i32, v.len * size_byte));
@@ -416,34 +431,46 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     return b.endVector(@intCast(u32, v.len));
 }
 
-fn assertNested(b: *Builder) void {
-    // If you get this assert, you're in an object while trying to write
+fn checkNested(b: *Builder) !void {
+    // If you get an error here, you're in an object while trying to write
     // data that belongs outside of an object.
     // To fix this, write non-inline data (like vectors) before creating
     // objects.
-    if (!b.nested) @panic("Incorrect creation order: must be inside object.");
+    if (!b.nested) return err(
+        "Incorrect creation order: must be inside object.",
+        .{},
+        error.InvalidNesting,
+    );
 }
 
-fn assertNotNested(b: *Builder) void {
+fn checkNotNested(b: *Builder) !void {
     // If you hit this, you're trying to construct a Table/Vector/String
     // during the construction of its parent table (between the MyTableBuilder
     // and builder.Finish()).
     // Move the creation of these sub-objects to above the MyTableBuilder to
     // not get this assert.
-    // Ignoring this assert may appear to work in simple cases, but the reason
+    // Ignoring this error may appear to work in simple cases, but the reason
     // it is here is that storing objects in-line may cause vtable offsets
     // to not fit anymore. It also leads to vtable duplication.
-    if (b.nested) @panic("Incorrect creation order: object must not be nested.");
+    if (b.nested) return err(
+        "Incorrect creation order: object must not be nested.",
+        .{},
+        error.InvalidNesting,
+    );
 }
 
-fn assertFinished(b: *Builder) void {
-    // If you get this assert, you're attempting to get access a buffer
+fn checkFinished(b: *Builder) !void {
+    // If you get this error, you're attempting to get access a buffer
     // which hasn't been finished yet. Be sure to call builder.Finish();
     // with your root table.
     // If you really need to access an unfinished buffer, use the Bytes
     // buffer directly.
     if (!b.finished)
-        @panic("Incorrect use of finishedBytes(): must call 'finish()' first.");
+        return err(
+            "Incorrect use of finishedBytes(): must call 'finish()' first.",
+            .{},
+            error.NotFinished,
+        );
 }
 
 /// prepends a T onto the object at vtable slot `o`.
@@ -469,10 +496,14 @@ pub fn prependSlotUOff(b: *Builder, o: u32, x: u32, d: u32) !void {
 // prepends a struct onto the object at vtable slot `o`.
 // Structs are stored inline, so nothing additional is being added.
 // In generated code, `d` is always 0.
-pub fn prependSlotStruct(b: *Builder, voffset: u32, x: u32, d: u32) void {
+pub fn prependSlotStruct(b: *Builder, voffset: u32, x: u32, d: u32) !void {
     if (x != d) {
-        b.assertNested();
-        if (x != b.offset()) @panic("inline data write outside of object");
+        try b.checkNested();
+        if (x != b.offset()) return err(
+            "inline data write outside of object",
+            .{},
+            error.InvalidOffset,
+        );
         b.slot(voffset);
     }
 }
@@ -528,7 +559,7 @@ pub fn finish(b: *Builder, rootTable: u32) !void {
 /// finalizes a buffer, pointing to the given `rootTable`
 /// with a size prefix.
 pub fn finishPrefixed(b: *Builder, root_table: u32, size_prefix: bool) !void {
-    b.assertNotNested();
+    try b.checkNotNested();
 
     if (size_prefix)
         try b.prep(@bitCast(i32, b.minalign), size_u32 + size_prefix_length)

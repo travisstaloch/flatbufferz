@@ -29,7 +29,8 @@ nested: bool,
 finished: bool,
 shared_strings: std.StringHashMapUnmanaged(u32) = .{},
 
-pub const file_identifier_length = 4;
+pub const Fid = [4]u8;
+pub const file_identifier_len: i32 = @typeInfo(Fid).Array.len;
 pub const size_prefix_length = 4;
 
 pub const size_u8 = @sizeOf(u8);
@@ -483,22 +484,17 @@ pub fn slot(b: *Builder, slotnum: u32) void {
 
 /// finalizes a buffer, pointing to the given `rootTable`.
 /// as well as applys a file identifier
-pub fn finishWithFileIdentifier(b: *Builder, rootTable: u32, fid: []const u8) !void {
-    if (fid == null or fid.len != file_identifier_length) {
-        @panic("incorrect file identifier length");
-    }
+pub fn finishWithFileIdentifier(b: *Builder, rootTable: u32, fid: Fid) !void {
     // In order to add a file identifier to the flatbuffer message, we need
     // to prepare an alignment and file identifier length
-    try b.prep(b.minalign, size_i32 + file_identifier_length);
-    // const for i = file_identifier_length - 1; i >= 0; i-- {
-    var i = file_identifier_length - 1;
-    while (true) : (i -= 1) {
+    try b.prep(@bitCast(i32, b.minalign), size_i32 + file_identifier_len);
+    var i = file_identifier_len - 1;
+    while (i >= 0) : (i -= 1) {
         // place the file identifier
-        b.place(u8, fid[i]);
-        if (i == 0) break;
+        b.place(u8, fid[@bitCast(u32, i)]);
     }
     // finish
-    b.finish(rootTable);
+    return b.finish(rootTable);
 }
 
 /// finalizes a buffer, pointing to the given `rootTable`.
@@ -511,22 +507,17 @@ pub fn finishSizePrefixed(b: *Builder, rootTable: u32) !void {
 /// finalizes a buffer, pointing to the given `rootTable`
 /// and applies a file identifier. The buffer is prefixed with the size of the buffer,
 /// excluding the size of the prefix itself.
-pub fn finishSizePrefixedWithFileIdentifier(b: *Builder, rootTable: u32, fid: []const u8) !void {
-    if (fid == null or fid.len != file_identifier_length) {
-        @panic("incorrect file identifier length");
-    }
-
+pub fn finishSizePrefixedWithFileIdentifier(b: *Builder, rootTable: u32, fid: [4]u8) !void {
     // In order to add a file identifier and size prefix to the flatbuffer message,
     // we need to prepare an alignment, a size prefix length, and file identifier length
-    try b.prep(b.minalign, size_i32 + file_identifier_length + size_prefix_length);
-    var i = file_identifier_length - 1;
-    while (true) : (i -= 1) {
+    try b.prep(@bitCast(i32, b.minalign), size_i32 + file_identifier_len + size_prefix_length);
+    var i = file_identifier_len - 1;
+    while (i >= 0) : (i -= 1) {
         // place the file identifier
-        b.place(u8, fid[i]);
-        if (i == 0) break;
+        b.place(u8, fid[@bitCast(u32, i)]);
     }
     // finish
-    b.finishPrefixed(rootTable, true);
+    return b.finishPrefixed(rootTable, true);
 }
 
 /// finalizes a buffer, pointing to the given `rootTable`.

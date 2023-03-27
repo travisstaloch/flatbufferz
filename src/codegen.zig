@@ -429,6 +429,7 @@ fn saveType(
     needs_imports: bool,
     imports: TypenameSet,
     kind: enum { enum_, struct_ },
+    schema: Schema,
 ) !void {
     if (contents.len == 0) return;
 
@@ -450,7 +451,7 @@ fn saveType(
     var src = std.ArrayList(u8).init(alloc);
     defer src.deinit();
     const src_writer = src.writer();
-    try genPrelude(bfbs_path, decl_file, basename, typename, imports, src_writer);
+    try genPrelude(bfbs_path, decl_file, basename, typename, imports, schema, src_writer);
     try src_writer.writeAll(contents);
 
     var ast = try std.zig.Ast.parse(alloc, try src.toOwnedSliceSentinel(0), .zig);
@@ -637,6 +638,7 @@ fn genPrelude(
     basename: []const u8,
     typename: []const u8,
     imports: TypenameSet,
+    schema: Schema,
     writer: anytype,
 ) !void {
     try writer.print(
@@ -666,6 +668,21 @@ fn genPrelude(
     var arr = NsTmpArr{};
     try writeNs(nsroot, writer, &arr, typename, 0);
     try writer.writeByte('\n');
+
+    if (isRootTable(typename, schema))
+        try writer.print(
+            \\pub const __file_ident: fb.Builder.Fid = "{s}".*;
+            \\pub const __file_ext = "{s}";
+            \\
+            \\
+        , .{ schema.FileIdent(), schema.FileExt() });
+}
+
+fn isRootTable(typename: []const u8, schema: Schema) bool {
+    return if (schema.RootTable()) |root_table|
+        mem.eql(u8, typename, root_table.Name())
+    else
+        false;
 }
 
 // FIXME: unused
@@ -2491,6 +2508,44 @@ fn genStruct(
         // Create a set of functions that allow table construction.
         try genTableBuilders(o, schema, imports, writer);
     }
+    if (isRootTable(o.Name(), schema)) {
+        // Check if a buffer has the identifier.
+        _ = try writer.write(
+            \\pub fn BufferHasIdentifier(buf: []const u8, off: u32) bool {
+            \\return fb.BufferHasIdentifier(buf, off, __file_ident, false);
+            \\}
+            \\
+            \\pub fn SizePrefixedBufferHasIdentifier(buf: []const u8, off: u32) bool {
+            \\return fb.BufferHasIdentifier(buf, off, __file_ident, true);
+            \\}
+            \\
+        );
+    }
+
+    // Finish a buffer with a given root object:
+    try writer.print(
+        \\pub fn FinishBuffer(__builder: *Builder, root: u32) !void {{
+        \\return {s};
+        \\}}
+        \\
+        \\
+    , .{if (isRootTable(o.Name(), schema))
+        \\__builder.finishWithFileIdentifier(root, __file_ident)
+    else
+        \\__builder.Finish(root)
+    });
+    try writer.print(
+        \\pub fn FinishSizePrefixedBuffer(__builder: *Builder,root: u32) !void {{
+        \\return {s};
+        \\}}
+        \\
+        \\
+    , .{if (isRootTable(o.Name(), schema))
+        \\__builder.finishSizePrefixedWithFileIdentifier(root, __file_ident)
+    else
+        \\__builder.FinishSizePrefixed(root)
+    });
+
     _ = try writer.write(
         \\};
         \\
@@ -2554,7 +2609,7 @@ fn genLookupByKey(
     try writer.print(
         \\while (span != 0) {{
         \\var middle = span / 2;
-        \\const table_off = fb.getIndirectOffset(buf, vector_loc + 4 * (start + middle));
+        \\const table_off = fb.GetIndirectOffset(buf, vector_loc + 4 * (start + middle));
         \\const obj = {s}.init(buf, table_off);
         \\
     , .{olastname});
@@ -2644,6 +2699,7 @@ pub fn generate(
             needs_imports,
             imports,
             .enum_,
+            schema,
         );
     }
     std.log.debug("schema.ObjectsLen()={}", .{schema.ObjectsLen()});
@@ -2671,6 +2727,7 @@ pub fn generate(
             needs_imports,
             imports,
             .struct_,
+            schema,
         );
     }
 

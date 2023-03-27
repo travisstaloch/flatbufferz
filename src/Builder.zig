@@ -58,6 +58,19 @@ pub fn init(alloc: mem.Allocator) Builder {
     };
 }
 
+/// initializes an empty Builder with `bytes` pre-allocated to `capacity`
+pub fn initCapacity(alloc: mem.Allocator, capacity: usize) !Builder {
+    return .{
+        .alloc = alloc,
+        .minalign = 1,
+        .object_end = 0,
+        .head = 0,
+        .nested = false,
+        .finished = false,
+        .bytes = try std.ArrayListUnmanaged(u8).initCapacity(alloc, capacity),
+    };
+}
+
 /// deinit `shared_strings`, `vtable`, `vtables`.
 /// does not deinit `bytes`.
 pub fn deinit(b: *Builder) void {

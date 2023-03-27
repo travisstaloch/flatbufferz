@@ -975,7 +975,7 @@ fn genNativeTableUnpack(
                 if (fb.idl.isScalar(fty_ele) or fty_ele == .String) {
                     try writer.print("rcv.{s}(j).?", .{fname_upper_camel});
                 } else if (fty_ele == .Obj) {
-                    try writer.print("try {}T.Unpack(x, __pack_opts)", .{fty_fmt});
+                    try writer.print("try x.Unpack(__pack_opts)", .{});
                 } else {
                     // TODO(iceboy): Support vector of unions.
                     unreachable;

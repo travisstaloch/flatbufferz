@@ -158,7 +158,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 2, 0, 0, 0, 2, 1, 0, 0 }, b, &i); // paddin
     }
     { // test 3b: 11xbyte vector matches builder size
-        var b = Builder.init(alloc);
+        var b = try Builder.initCapacity(alloc, 12);
         defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 8, 1);
@@ -1449,7 +1449,7 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
     }.func;
 
     // test default values
-    var fbb = Builder.init(alloc);
+    var fbb = try Builder.initCapacity(alloc, 1);
     defer fbb.deinitAll();
     try ScalarStuff.Start(&fbb);
     try fbb.finish(try ScalarStuff.End(&fbb));

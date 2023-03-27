@@ -54,7 +54,7 @@ pub const GenStep = struct {
             source.addStepDependencies(&self.step);
         }
 
-        const run_cmd = exe.run();
+        const run_cmd = b.addRunArtifact(exe);
         run_cmd.step.dependOn(&exe.step);
 
         try b.cache_root.handle.makePath(cache_subdir);

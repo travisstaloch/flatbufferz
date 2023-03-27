@@ -42,15 +42,15 @@ pub fn main() !void {
 
     _ = try Monster.StartInventoryVector(&builder, 10);
     for (0..10) |i| try builder.prepend(u8, @intCast(u8, 9 - i));
-    const inv = builder.endVector(10);
+    const inv = try builder.endVector(10);
     _ = try Monster.StartWeaponsVector(&builder, 2);
     // Note: Since we prepend the weapons, prepend in reverse order.
     try builder.prependUOff(axe);
     try builder.prependUOff(sword);
-    const weapons = builder.endVector(2);
+    const weapons = try builder.endVector(2);
     const pos = try Vec3.Create(&builder, 1.0, 2.0, 3.0);
     try Monster.Start(&builder);
-    Monster.AddPos(&builder, pos);
+    try Monster.AddPos(&builder, pos);
     try Monster.AddHp(&builder, 300);
     try Monster.AddName(&builder, name);
     try Monster.AddInventory(&builder, inv);
@@ -65,7 +65,7 @@ pub fn main() !void {
     // ...Saving to file or sending over a network code goes here...
     // Instead, we are going to access this buffer right away (as if we just received it).
 
-    const buf = builder.finishedBytes();
+    const buf = try builder.finishedBytes();
 
     // Note: We use `0` for the offset here, since we got the data using the
     // `builder.FinishedBytes()` method. This simulates the data you would store/receive in your

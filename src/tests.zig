@@ -50,7 +50,7 @@ fn checkGeneratedBuild(
     try b.prepend(u8, 2);
     try b.prepend(u8, 1);
     try b.prepend(u8, 0);
-    const inv = b.endVector(5);
+    const inv = try b.endVector(5);
 
     try Monster.Start(&b);
     try Monster.AddName(&b, fred);
@@ -59,17 +59,17 @@ fn checkGeneratedBuild(
     _ = try Monster.StartTest4Vector(&b, 2);
     _ = try Test.Create(&b, 10, 20);
     _ = try Test.Create(&b, 30, 40);
-    const test4 = b.endVector(2);
+    const test4 = try b.endVector(2);
 
     _ = try Monster.StartTestarrayofstringVector(&b, 2);
     try b.prependUOff(test2);
     try b.prependUOff(test1);
-    const testArrayOfString = b.endVector(2);
+    const testArrayOfString = try b.endVector(2);
 
     try Monster.Start(&b);
 
     const pos = try Vec3.Create(&b, 1.0, 2.0, 3.0, 3.0, .Green, 5, 6);
-    Monster.AddPos(&b, pos);
+    try Monster.AddPos(&b, pos);
 
     try Monster.AddHp(&b, 80);
     try Monster.AddName(&b, str);
@@ -141,7 +141,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 0, 0, 0 }, b, &i); // align to 4byte
         try b.prepend(u8, 1);
         try check(&[_]u8{ 1, 0, 0, 0 }, b, &i);
-        _ = b.endVector(1);
+        _ = try b.endVector(1);
         try check(&[_]u8{ 1, 0, 0, 0, 1, 0, 0, 0 }, b, &i); // paddin
     }
     { // test 3: 2xbyte vector
@@ -154,7 +154,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 1, 0, 0 }, b, &i);
         try b.prepend(u8, 2);
         try check(&[_]u8{ 2, 1, 0, 0 }, b, &i);
-        _ = b.endVector(2);
+        _ = try b.endVector(2);
         try check(&[_]u8{ 2, 0, 0, 0, 2, 1, 0, 0 }, b, &i); // paddin
     }
     { // test 3b: 11xbyte vector matches builder size
@@ -170,7 +170,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
             try start.insert(0, @intCast(u8, j));
             try check(start.items, b, &i);
         }
-        _ = b.endVector(8);
+        _ = try b.endVector(8);
         try start.insertSlice(0, &.{ 8, 0, 0, 0 });
         try check(start.items, b, &i);
     }
@@ -183,7 +183,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
         try b.prepend(u16, 1);
         try check(&[_]u8{ 1, 0, 0, 0 }, b, &i);
-        _ = b.endVector(1);
+        _ = try b.endVector(1);
         try check(&[_]u8{ 1, 0, 0, 0, 1, 0, 0, 0 }, b, &i); // paddin
     }
 
@@ -197,7 +197,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try check(&[_]u8{ 0xCD, 0xAB }, b, &i);
         try b.prepend(u16, 0xDCBA);
         try check(&[_]u8{ 0xBA, 0xDC, 0xCD, 0xAB }, b, &i);
-        _ = b.endVector(2);
+        _ = try b.endVector(2);
         try check(&[_]u8{ 2, 0, 0, 0, 0xBA, 0xDC, 0xCD, 0xAB }, b, &i);
     }
 
@@ -342,7 +342,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 0, 1);
-        const vecend = b.endVector(0);
+        const vecend = try b.endVector(0);
         _ = try b.startObject(1);
         try b.prependSlotUOff(0, vecend, 0);
 
@@ -361,7 +361,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 0, 1);
-        const vecend = b.endVector(0);
+        const vecend = try b.endVector(0);
         _ = try b.startObject(2);
         try b.prependSlot(i16, 0, 55, 0);
         try b.prependSlotUOff(1, vecend, 0);
@@ -384,7 +384,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         _ = try b.startVector(fb.Builder.size_i16, 2, 1);
         try b.prepend(i16, 0x1234);
         try b.prepend(i16, 0x5678);
-        const vecend = b.endVector(2);
+        const vecend = try b.endVector(2);
         _ = try b.startObject(2);
         try b.prependSlotUOff(1, vecend, 0);
         try b.prependSlot(i16, 0, 55, 0);
@@ -415,7 +415,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         b.pad(2);
         try b.prepend(i32, 0x12345678);
         const structStart = b.offset();
-        b.prependSlotStruct(0, structStart, 0);
+        try b.prependSlotStruct(0, structStart, 0);
         _ = try b.endObject();
         try check(&[_]u8{
             6, 0, // vtable bytes
@@ -438,7 +438,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         try b.prepend(i8, 44);
         try b.prepend(i8, 55);
         try b.prepend(i8, 66);
-        const vecend = b.endVector(2);
+        const vecend = try b.endVector(2);
         _ = try b.startObject(1);
         try b.prependSlotUOff(0, vecend, 0);
         _ = try b.endObject();
@@ -838,7 +838,7 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     var b = Builder.init(alloc);
     const pos = try Vec3.Create(&b, 1.0, 2.0, 3.0, 3.0, Color.Green, 5, 6);
     _ = try b.finish(pos);
-    const vec3_bytes = b.finishedBytes();
+    const vec3_bytes = try b.finishedBytes();
     const vec3 = fb.GetRootAs(Vec3, vec3_bytes, 0);
     try testing.expect(mem.eql(u8, vec3_bytes, vec3.Table().bytes));
     b.deinit();
@@ -854,7 +854,7 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     try Stat.AddCount(&b, 12345);
     const pos2 = try Stat.End(&b);
     _ = try b.finish(pos2);
-    const stat_bytes = b.finishedBytes();
+    const stat_bytes = try b.finishedBytes();
     const stat = Stat.GetRootAs(stat_bytes, 0);
     try testing.expect(mem.eql(u8, stat_bytes, stat.Table().bytes));
     alloc.free(stat_bytes);
@@ -1119,8 +1119,8 @@ fn checkObjectAPI(
     defer builder.deinitAll();
 
     try builder.finish(try monster.Pack(&builder, .{ .allocator = alloc }));
-    const m = Monster.GetRootAs(builder.finishedBytes(), 0);
-    var monster2 = try m.Unpack(.{ .allocator = alloc });
+    var monster2 = try Monster.GetRootAs(try builder.finishedBytes(), 0)
+        .Unpack(.{ .allocator = alloc });
     defer monster2.deinit(alloc);
     // TODO use std.testing.expectEqualDeep() once
     // https://github.com/ziglang/zig/pull/14981 is merged
@@ -1229,7 +1229,7 @@ fn checkCreateByteVector(alloc: mem.Allocator) !void {
         while (i >= 0) : (i -= 1)
             try b1.prepend(u8, raw[@bitCast(usize, i)]);
 
-        _ = b1.endVector(@intCast(u32, size));
+        _ = try b1.endVector(@intCast(u32, size));
         _ = try b2.createByteVector(raw[0..size]);
         try testing.expectEqualStrings(b1.bytes.items, b2.bytes.items);
     }
@@ -1245,7 +1245,7 @@ fn checkParentNamespace(alloc: mem.Allocator) !void {
         const m = try Monster.End(&builder);
         try builder.finish(m);
 
-        break :blk try alloc.dupe(u8, builder.finishedBytes());
+        break :blk try alloc.dupe(u8, try builder.finishedBytes());
     };
     defer alloc.free(empty);
 
@@ -1264,7 +1264,7 @@ fn checkParentNamespace(alloc: mem.Allocator) !void {
 
         try builder.finish(m);
 
-        break :blk try alloc.dupe(u8, builder.finishedBytes());
+        break :blk try alloc.dupe(u8, try builder.finishedBytes());
     };
     defer alloc.free(nonempty);
 
@@ -1292,7 +1292,7 @@ fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
     try builder.finish(try food.Pack(&builder, .{ .allocator = alloc }));
 
     // Receive order
-    const received_food = Food.GetRootAs(builder.finishedBytes(), 0);
+    const received_food = Food.GetRootAs(try builder.finishedBytes(), 0);
     const received_pizza = try received_food.Pizza_().?.Unpack(.{ .allocator = alloc });
 
     try expectEqualDeep(ordered_pizza, received_pizza);
@@ -1444,7 +1444,7 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
             try ScalarStuff.AddMaybeEnum(b, .Two);
             try ScalarStuff.AddDefaultEnum(b, .Two);
             try b.finish(try ScalarStuff.End(b));
-            return ScalarStuff.GetRootAs(b.finishedBytes(), 0);
+            return ScalarStuff.GetRootAs(try b.finishedBytes(), 0);
         }
     }.func;
 
@@ -1453,7 +1453,7 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
     defer fbb.deinitAll();
     try ScalarStuff.Start(&fbb);
     try fbb.finish(try ScalarStuff.End(&fbb));
-    var ss = ScalarStuff.GetRootAs(fbb.finishedBytes(), 0);
+    var ss = ScalarStuff.GetRootAs(try fbb.finishedBytes(), 0);
     try makeDefaultTestCases(ss);
 
     // test assigned values
@@ -1503,7 +1503,7 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
     };
 
     try fbb.finish(try obj.Pack(&fbb, .{}));
-    ss = ScalarStuff.GetRootAs(fbb.finishedBytes(), 0);
+    ss = ScalarStuff.GetRootAs(try fbb.finishedBytes(), 0);
     try makeAssignedTestCases(ss);
 
     // test native object unpack

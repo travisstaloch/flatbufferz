@@ -806,7 +806,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 }
                 try writer.print(
                     \\}}
-                    \\{0s} = __builder.endVector(@bitCast(u32, {1s}));
+                    \\{0s} = try __builder.endVector(@bitCast(u32, {1s}));
                     \\}}
                     \\}}
                     \\
@@ -872,10 +872,8 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         .{ struct_type, fname_camel_upper, fieldNameFmt(fname_orig, imports) },
                     );
                 }
-                if (!(field_base_ty == .Obj and isStruct(field_ty.Index(), schema)))
-                    _ = try writer.write("try ");
                 try writer.print(
-                    "{s}.Add{s}(__builder, {s});\n",
+                    "try {s}.Add{s}(__builder, {s});\n",
                     .{ struct_type, fname_camel_upper, fname_off },
                 );
             }
@@ -2192,16 +2190,10 @@ fn buildFieldOfTable(
         try writer.print("{}", .{fty_fmt});
     }
 
-    if (fb.idl.isStruct(field_base_ty) and isStruct(field_ty.Index(), schema))
-        _ = try writer.write(
-            \\) void {
-            \\__builder.prepend
-        )
-    else
-        _ = try writer.write(
-            \\) !void {
-            \\try __builder.prepend
-        );
+    _ = try writer.write(
+        \\) !void {
+        \\try __builder.prepend
+    );
     if (isScalarOptional(field, field_base_ty)) {
         try writer.print("({}, ", .{fty_fmt});
     } else {

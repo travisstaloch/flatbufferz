@@ -2508,6 +2508,14 @@ fn genStruct(
         // Create a set of functions that allow table construction.
         try genTableBuilders(o, schema, imports, writer);
     }
+
+    try writer.print(
+        \\pub fn unpack(rcv: {0s}, __pack_opts: fb.common.PackOptions) !{0s}T {{
+        \\return {0s}T.unpack(rcv, __pack_opts);
+        \\}}
+        \\
+    , .{lastName(o.Name())});
+
     if (isRootTable(o.Name(), schema)) {
         // Check if a buffer has the identifier.
         _ = try writer.write(

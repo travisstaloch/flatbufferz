@@ -1103,7 +1103,7 @@ fn checkObjectAPI(
     else
         Monster.GetRootAs(buf, offset);
 
-    var monster = try MonsterT.unpack(monster_, .{ .allocator = alloc });
+    var monster = try monster_.unpack(.{ .allocator = alloc });
     defer monster.deinit(alloc);
 
     try std.testing.expectEqual(@as(i16, 80), monster.hp);
@@ -1120,7 +1120,7 @@ fn checkObjectAPI(
 
     try builder.finish(try monster.pack(&builder, .{ .allocator = alloc }));
     const m = Monster.GetRootAs(builder.finishedBytes(), 0);
-    var monster2 = try MonsterT.unpack(m, .{ .allocator = alloc });
+    var monster2 = try m.unpack(.{ .allocator = alloc });
     defer monster2.deinit(alloc);
     // TODO use std.testing.expectEqualDeep() once
     // https://github.com/ziglang/zig/pull/14981 is merged
@@ -1293,7 +1293,7 @@ fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
 
     // Receive order
     const received_food = Food.GetRootAs(builder.finishedBytes(), 0);
-    const received_pizza = try PizzaT.unpack(received_food.Pizza_().?, .{ .allocator = alloc });
+    const received_pizza = try received_food.Pizza_().?.unpack(.{ .allocator = alloc });
 
     try expectEqualDeep(ordered_pizza, received_pizza);
 }

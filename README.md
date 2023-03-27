@@ -74,7 +74,8 @@ my_exe.addModule("flatbufferz", flatbufferz_mod);
 ```
 
 # Tools
-Convert .bfbs to .fbs.  :warning: --bfbs-to-fbs doesn't yet produce valid .fbs files. In its current state, it is more of a binary schema debugging tool. :warning:
+Convert .bfbs to .fbs.
 ```console
 zig-out/bin/flatc-zig gen/test.bfbs --bfbs-to-fbs
 ```
+:warning: warning: --bfbs-to-fbs doesn't produce valid .fbs files. In its current state, it is more of a binary schema debugging tool. 

@@ -1103,7 +1103,7 @@ fn checkObjectAPI(
     else
         Monster.GetRootAs(buf, offset);
 
-    var monster = try monster_.unpack(.{ .allocator = alloc });
+    var monster = try monster_.Unpack(.{ .allocator = alloc });
     defer monster.deinit(alloc);
 
     try std.testing.expectEqual(@as(i16, 80), monster.hp);
@@ -1118,9 +1118,9 @@ fn checkObjectAPI(
     var builder = fb.Builder.init(alloc);
     defer builder.deinitAll();
 
-    try builder.finish(try monster.pack(&builder, .{ .allocator = alloc }));
+    try builder.finish(try monster.Pack(&builder, .{ .allocator = alloc }));
     const m = Monster.GetRootAs(builder.finishedBytes(), 0);
-    var monster2 = try m.unpack(.{ .allocator = alloc });
+    var monster2 = try m.Unpack(.{ .allocator = alloc });
     defer monster2.deinit(alloc);
     // TODO use std.testing.expectEqualDeep() once
     // https://github.com/ziglang/zig/pull/14981 is merged
@@ -1289,11 +1289,11 @@ fn checkNoNamespaceImport(alloc: mem.Allocator) !void {
 
     var ordered_pizza = PizzaT{ .size = size };
     const food = FoodT{ .pizza = &ordered_pizza };
-    try builder.finish(try food.pack(&builder, .{ .allocator = alloc }));
+    try builder.finish(try food.Pack(&builder, .{ .allocator = alloc }));
 
     // Receive order
     const received_food = Food.GetRootAs(builder.finishedBytes(), 0);
-    const received_pizza = try received_food.Pizza_().?.unpack(.{ .allocator = alloc });
+    const received_pizza = try received_food.Pizza_().?.Unpack(.{ .allocator = alloc });
 
     try expectEqualDeep(ordered_pizza, received_pizza);
 }
@@ -1502,14 +1502,14 @@ fn checkOptionalScalars(alloc: mem.Allocator) !void {
         .default_enum = .Two,
     };
 
-    try fbb.finish(try obj.pack(&fbb, .{}));
+    try fbb.finish(try obj.Pack(&fbb, .{}));
     ss = ScalarStuff.GetRootAs(fbb.finishedBytes(), 0);
     try makeAssignedTestCases(ss);
 
     // test native object unpack
     fbb.reset();
     ss = try buildAssignedTable(&fbb);
-    try ScalarStuffT.unpackTo(ss, &obj, .{});
+    try ScalarStuffT.UnpackTo(ss, &obj, .{});
     try testing.expectEqual(@as(i8, 5), obj.just_i8);
     try testing.expectEqual(@as(?i8, 5), obj.maybe_i8);
     try testing.expectEqual(@as(i8, 5), obj.default_i8);
@@ -1560,11 +1560,11 @@ fn checkByKey(alloc: mem.Allocator) !void {
     const ironPig = MonsterT{ .name = "Iron Pig" };
 
     var monsterOffsets: [5]u32 = .{
-        try slime.pack(&b, .{}),
-        try pig.pack(&b, .{}),
-        try slimeBoss.pack(&b, .{}),
-        try mushroom.pack(&b, .{}),
-        try ironPig.pack(&b, .{}),
+        try slime.Pack(&b, .{}),
+        try pig.Pack(&b, .{}),
+        try slimeBoss.Pack(&b, .{}),
+        try mushroom.Pack(&b, .{}),
+        try ironPig.Pack(&b, .{}),
     };
     const testarrayoftables =
         try b.createVectorOfSortedTables(&monsterOffsets, Monster.KeyCompare);
@@ -1576,10 +1576,10 @@ fn checkByKey(alloc: mem.Allocator) !void {
     const mp = StatT{ .id = "Mana" };
 
     var statOffsets: [4]u32 = .{
-        try str.pack(&b, .{}),
-        try luk.pack(&b, .{}),
-        try hp.pack(&b, .{}),
-        try mp.pack(&b, .{}),
+        try str.Pack(&b, .{}),
+        try luk.Pack(&b, .{}),
+        try hp.Pack(&b, .{}),
+        try mp.Pack(&b, .{}),
     };
     const scalarKeySortedTablesOffset =
         try b.createVectorOfSortedTables(&statOffsets, Stat.KeyCompare);

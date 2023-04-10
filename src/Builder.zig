@@ -304,7 +304,7 @@ pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
     var align_size = (~(@bitCast(i64, b.bytes.items.len) - @bitCast(i32, b.head) + additional_bytes) + 1);
     align_size &= size - 1;
 
-    std.log.debug("prep() 1 b.head={} align_size={} additional_bytes={} size={}", .{ b.head, align_size, additional_bytes, size });
+    b.debug("prep() 1 b.head={} align_size={} additional_bytes={} size={}", .{ b.head, align_size, additional_bytes, size });
     // Reallocate the buffer if needed:
     while (b.head <= align_size + size + additional_bytes) {
         const old_buf_size = b.bytes.items.len;
@@ -327,7 +327,7 @@ pub fn prependSOff(b: *Builder, off: i32) !void {
 
 /// prepends a u32, relative to where it will be written.
 pub fn prependUOff(b: *Builder, off: u32) !void {
-    std.log.debug("prependUOff off={}", .{off});
+    b.debug("prependUOff off={}", .{off});
     try b.prep(size_u32, 0); // Ensure alignment is already done.
     if (off > b.offset())
         return err("unreachable: off > b.offset()", .{}, error.InvalidOffset);
@@ -609,7 +609,7 @@ pub fn prepend(b: *Builder, comptime T: type, x: T) !void {
 
 /// prepends a T to the Builder, without checking for space.
 pub fn place(b: *Builder, comptime T: type, x: T) void {
-    std.log.debug("place{s} b.head={} x={}", .{ @typeName(T), b.head, x });
+    b.debug("place{s} b.head={} x={}", .{ @typeName(T), b.head, x });
     b.head -= @sizeOf(T);
     write(T, b.bytes.items[b.head..], x);
 }

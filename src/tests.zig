@@ -841,12 +841,11 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     const vec3_bytes = try b.finishedBytes();
     const vec3 = fb.GetRootAs(Vec3, vec3_bytes, 0);
     try testing.expect(mem.eql(u8, vec3_bytes, vec3.Table().bytes));
-    b.deinit();
-    alloc.free(vec3_bytes);
+    b.deinitAll();
 
     // test table accessor
     b = Builder.init(alloc);
-    defer b.deinit();
+    defer b.deinitAll();
     const str = try b.createString("MyStat");
     try Stat.Start(&b);
     try Stat.AddId(&b, str);
@@ -857,7 +856,6 @@ fn checkTableAccessors(alloc: mem.Allocator) !void {
     const stat_bytes = try b.finishedBytes();
     const stat = Stat.GetRootAs(stat_bytes, 0);
     try testing.expect(mem.eql(u8, stat_bytes, stat.Table().bytes));
-    alloc.free(stat_bytes);
 }
 
 /// checks that the buffer is evaluated correctly as an example Monster.

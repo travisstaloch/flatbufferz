@@ -106,7 +106,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const flatc = flatbuffers_dep.artifact("flatc");
-    flatc.install(); // doesn't do anything
+    b.installArtifact(flatc); // doesn't do anything
     build_options.addOptionArtifact("flatc_exe_path", flatc);
     exe.step.dependOn(&flatc.step);
 

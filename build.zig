@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("zig-clap", zig_clap);
     exe.addOptions("build_options", build_options);
 
-    exe.install();
+    b.installArtifact(exe);
 
     const exe_run = b.addRunArtifact(exe);
     exe_run.has_side_effects = true;
@@ -93,7 +93,7 @@ pub fn build(b: *std.Build) !void {
         sample_exe.addModule("generated", gen_mod);
         sample_exe.step.dependOn(&gen_step.step);
 
-        sample_exe.install();
+        b.installArtifact(sample_exe);
 
         const sample_run = b.addRunArtifact(sample_exe);
         sample_run.has_side_effects = true;

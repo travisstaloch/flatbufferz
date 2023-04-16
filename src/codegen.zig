@@ -561,7 +561,7 @@ fn writeNs(
                     \\
                 , .{ typename, full_name, path_buf.constSlice(), common_prefix_len, @tagName(base_ty) });
                 if (path_buf.len > 0) {
-                    var buf: [path_buf.buffer.len]u8 = undefined;
+                    var buf: [@typeInfo(@TypeOf(path_buf.buffer)).Array.len]u8 = undefined;
                     for (path_buf.constSlice(), 0..) |c, i| {
                         buf[i] = if (c == '.') '/' else c;
                     }
@@ -2714,7 +2714,7 @@ pub fn generate(
         defer structcode.deinit(alloc);
         const swriter = structcode.writer(alloc);
         imports.clearRetainingCapacity();
-        try genStruct(o, schema, !opts.@"no-gen-object-api", &imports, swriter);
+        try genStruct(o, schema, opts.@"no-gen-object-api" == 0, &imports, swriter);
 
         try imports.put(o.Name(), .Obj);
         try saveType(

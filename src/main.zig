@@ -45,12 +45,12 @@ pub fn main() !void {
 
     const stdout = std.io.getStdOut().writer();
 
-    if (res.args.@"bfbs-to-fbs") {
+    if (res.args.@"bfbs-to-fbs" != 0) {
         for (res.positionals) |filename| {
             try util.expectExtension(".bfbs", filename);
             try fb.binary_tools.bfbsToFbs(alloc, filename, stdout);
         }
-    } else if (res.args.help) {
+    } else if (res.args.help != 0) {
         try usage(&clap_params, res);
     } else {
         // setup a flatc command args used to gen .bfbs from .fbs args

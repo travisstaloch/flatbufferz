@@ -4,12 +4,12 @@
 
     .dependencies = .{
         .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/d38b13e7bcd5df0edad6e4331a62eb68778a152d.tar.gz",
-            .hash = "1220b3331651daa5a76bd371c727408d7f76b38d8adce3494b8221df73a74faa4214",
+            .url = "https://github.com/Hejsil/zig-clap/archive/7658c1a305dcca131eda2d8c823d1d86f59182a3.tar.gz",
+            .hash = "1220ac6276c856cd46d9ccbea9b641a070b42280236c1ab7b51861dc134088183e9a",
         },
         .flatbuffers = .{
-            .url = "https://github.com/travisstaloch/flatbuffers/archive/55e48aaea8fddef1f025455f395f2408b9d40814.tar.gz",
-            .hash = "12200aa5e4c41aabca5c71c8d4dd92cd1f095760cd8a97de1575a4b842b06c658e9d",
+            .url = "https://github.com/travisstaloch/flatbuffers/archive/ba918483f6b69c8c8f1f4f313174bfb87fdac9b3.tar.gz",
+            .hash = "1220eb337a1be7f0719ecf9d0d7f6c7746628333c82b5cc9742a16cfecc9f7921673",
         },
 
     }

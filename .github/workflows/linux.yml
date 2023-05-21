@@ -23,7 +23,7 @@ jobs:
         version: master
         # version: 0.10.0
         # version: 0.11.0-dev.1987+a2c6ecd6d
-    - run: zig build -Dbuild-sample run-sample
+    - run: zig build run-sample
     - run: zig build test
     - run: zig build
  

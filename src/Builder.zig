@@ -122,7 +122,7 @@ pub fn startObject(b: *Builder, numfields: u32) !void {
     b.nested = true;
     try b.vtable.ensureTotalCapacity(b.alloc, numfields);
     b.vtable.items.len = numfields;
-    std.mem.set(u32, b.vtable.items, 0);
+    @memset(b.vtable.items, 0);
     b.object_end = b.offset();
 }
 

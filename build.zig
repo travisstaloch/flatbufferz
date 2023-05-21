@@ -75,31 +75,23 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&tests_run.step);
     tests_run.has_side_effects = true;
 
-    // TODO remove this flag.
-    const build_sample = b.option(
-        bool,
-        "build-sample",
-        "Wether to build the examples/sample_binary.zig exe",
-    ) orelse false;
-    if (build_sample) {
-        const sample_exe = b.addExecutable(.{
-            .name = "sample",
-            .root_source_file = .{ .path = "examples/sample_binary.zig" },
-            .target = target,
-            .optimize = optimize,
-        });
-        sample_exe.addOptions("build_options", build_options);
-        sample_exe.addModule("flatbufferz", lib_mod);
-        sample_exe.addModule("generated", gen_mod);
-        sample_exe.step.dependOn(&gen_step.step);
+    const sample_exe = b.addExecutable(.{
+        .name = "sample",
+        .root_source_file = .{ .path = "examples/sample_binary.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    sample_exe.addOptions("build_options", build_options);
+    sample_exe.addModule("flatbufferz", lib_mod);
+    sample_exe.addModule("generated", gen_mod);
+    sample_exe.step.dependOn(&gen_step.step);
 
-        b.installArtifact(sample_exe);
+    b.installArtifact(sample_exe);
 
-        const sample_run = b.addRunArtifact(sample_exe);
-        sample_run.has_side_effects = true;
-        const sample_run_step = b.step("run-sample", "Run the app");
-        sample_run_step.dependOn(&sample_run.step);
-    }
+    const sample_run = b.addRunArtifact(sample_exe);
+    sample_run.has_side_effects = true;
+    const sample_run_step = b.step("run-sample", "Run the sample app");
+    sample_run_step.dependOn(&sample_run.step);
 
     const flatbuffers_dep = b.dependency("flatbuffers", .{
         .target = target,

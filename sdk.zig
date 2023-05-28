@@ -87,13 +87,13 @@ pub const GenStep = struct {
         defer dir.close();
         var iter = dir.iterate();
         while (try iter.next()) |entry| {
-            if (entry.kind == .Directory) {
+            if (entry.kind == .directory) {
                 const sub_path = try std.fs.path.join(self.b.allocator, &.{ path, entry.name });
                 defer self.b.allocator.free(sub_path);
                 try self.visit(sub_path, writer);
                 continue;
             }
-            if (entry.kind != .File) continue;
+            if (entry.kind != .file) continue;
             // extract file name identifier: a/b/foo.fb.zig => foo
             const endidx = std.mem.lastIndexOf(u8, entry.name, ".fb.zig") orelse
                 continue;

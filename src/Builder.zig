@@ -384,7 +384,7 @@ pub fn createVectorOfSortedTables(
         }
     }.cmp;
 
-    std.sort.sort(u32, offsets, b.bytes.items, cmp);
+    std.mem.sort(u32, offsets, b.bytes.items, cmp);
     return b.createVectorOfTables(offsets);
 }
 

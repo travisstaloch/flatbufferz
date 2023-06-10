@@ -8,8 +8,8 @@ pub fn build(b: *std.Build) !void {
     const log_level = b.option(
         std.log.Level,
         "log-level",
-        "The log level for the application. default .err",
-    ) orelse .err;
+        "The log level for the application. default .warn",
+    ) orelse .debug;
     const build_options = b.addOptions();
     build_options.addOption(std.log.Level, "log_level", log_level);
 

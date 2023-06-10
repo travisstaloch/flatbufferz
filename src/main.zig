@@ -110,7 +110,14 @@ pub fn main() !void {
                 );
                 std.os.exit(1);
             };
-            try fb.codegen.generate(alloc, bfbs_path, gen_path, filename_noext, res.args);
+            const opts = fb.codegen.Options{
+                .object_api = res.args.@"no-gen-object-api" == 0,
+                .title_case_fns = false,
+                .write_index = true,
+                .extension = ".zig",
+                .gen_path = gen_path,
+            };
+            try fb.codegen.codegen(alloc, bfbs_path, opts);
         }
     }
 }

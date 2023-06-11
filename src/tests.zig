@@ -683,9 +683,9 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
             try testing.expect(tb.mutateSlot(i64, calcVOffsetT(9), 18));
             try testing.expect(tb.mutateSlot(f32, calcVOffsetT(10), 20));
             try testing.expect(tb.mutateSlot(f64, calcVOffsetT(11), 22));
-            try testing.expect(tb.mutate(u32, calcUOffsetT(calcVOffsetT(12), tb), 24));
-            try testing.expect(tb.mutate(u16, calcUOffsetT(calcVOffsetT(13), tb), 26));
-            try testing.expect(tb.mutate(i32, calcUOffsetT(calcVOffsetT(14), tb), 28));
+            tb.mutate(u32, calcUOffsetT(calcVOffsetT(12), tb), 24);
+            tb.mutate(u16, calcUOffsetT(calcVOffsetT(13), tb), 26);
+            tb.mutate(i32, calcUOffsetT(calcVOffsetT(14), tb), 28);
         }
     }.func;
 

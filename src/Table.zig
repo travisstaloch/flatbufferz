@@ -103,9 +103,8 @@ pub fn read(t: Table, comptime T: type, off: u32) T {
 }
 
 /// writes a T at the given offset
-pub fn mutate(t: Table, comptime T: type, off: u32, n: T) bool {
+pub fn mutate(t: Table, comptime T: type, off: u32, n: T) void {
     encode.write(T, t.bytes[off..], n);
-    return true;
 }
 
 // writes a T at given vtable location

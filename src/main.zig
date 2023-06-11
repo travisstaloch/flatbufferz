@@ -22,9 +22,8 @@ const clap_params = clap.parseParamsComptime(
     \\--bfbs-to-fbs           Interpret positionals as .bfbs files and convert them to .fbs.  Prints to stdout.
     \\-o, --output-path <str> Path to write generated content to
     \\-I, --include-dir <str>... Adds an include directory which gets passed on to flatc.
-    // \\--gen-onefile           Write all output to a single file.
-    \\--no-gen-object-api     Don't generate an additional object-based API.
-    //    \\--keep-prefix           Keep original prefix of schema include statements.
+    //--gen-onefile           Write all output to a single file.
+    //--keep-prefix           Keep original prefix of schema include statements.
     \\<str>...                Files
     \\
 );
@@ -111,13 +110,11 @@ pub fn main() !void {
                 std.os.exit(1);
             };
             const opts = fb.codegen.Options{
-                .object_api = res.args.@"no-gen-object-api" == 0,
-                .title_case_fns = false,
                 .write_index = true,
                 .extension = ".zig",
                 .gen_path = gen_path,
             };
-            try fb.codegen.codegen(alloc, bfbs_path, opts);
+            try fb.codegen.codegen(alloc, bfbs_path, filename_noext, opts);
         }
     }
 }

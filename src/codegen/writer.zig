@@ -1,6 +1,7 @@
 const std = @import("std");
 const StringPool = @import("string_pool.zig").StringPool;
 const types = @import("types.zig");
+const Type = @import("./type.zig").Type;
 
 const Allocator = std.mem.Allocator;
 const log = types.log;
@@ -19,27 +20,6 @@ fn getDeclarationName(fname: []const u8) []const u8 {
     const basename = getBasename(fname);
     const first_dot = std.mem.indexOfScalar(u8, basename, '.') orelse basename.len;
     return basename[0..first_dot];
-}
-
-fn getBaseType(ty: types.BaseType) ![]const u8 {
-    return switch (ty) {
-        .Bool => "bool",
-        .Byte => "i8",
-        .UByte => "u8",
-        .Short => "i16",
-        .UShort => "u16",
-        .Int => "i32",
-        .UInt => "u32",
-        .Long => "i64",
-        .ULong => "u64",
-        .Float => "f32",
-        .Double => "f64",
-        .String => "[]const u8",
-        else => |t| {
-            log.err("invalid base type {any}", .{t});
-            return error.InvalidBaseType;
-        },
-    };
 }
 
 fn changeCase(writer: anytype, input: []const u8, mode: enum { camel, title }) !void {
@@ -87,15 +67,24 @@ fn toTitleCase(writer: anytype, input: []const u8) !void {
 }
 
 fn toSnakeCase(writer: anytype, input: []const u8) !void {
-    for (input) |c| {
-        if ((c >= 'A' and c <= 'Z') or c == ' ') try writer.writeByte('_');
+    for (input, 0..) |c, i| {
+        if (((c >= 'A' and c <= 'Z') or c == ' ') and i != 0) try writer.writeByte('_');
         if (c != ' ') try writer.writeByte(std.ascii.toLower(c));
     }
+}
+
+fn fieldLessThan(context: void, a: types.Field, b: types.Field) bool {
+    _ = context;
+    return a.Id() < b.Id();
 }
 
 pub const CodeWriter = struct {
     const Self = @This();
     const ImportDeclarations = std.StringHashMap([]const u8);
+    const IndexOffset = struct {
+        index: usize,
+        offset: usize,
+    };
 
     allocator: Allocator,
     import_declarations: ImportDeclarations,
@@ -134,14 +123,6 @@ pub const CodeWriter = struct {
         try self.putDeclaration(declaration, module.items);
     }
 
-    fn writeTypeDeclaration(self: *Self, writer: anytype, obj_or_enum: anytype) !void {
-        const declaration = try self.getTypeName(getDeclarationName(obj_or_enum.DeclarationFile()), false);
-        try self.addDeclaration(declaration);
-
-        const typename = try self.getIdentifier(obj_or_enum.Name());
-        try writer.print("{s}.{s}", .{ declaration, typename });
-    }
-
     // This struct owns returned string
     fn getIdentifier(self: *Self, ident: []const u8) ![]const u8 {
         const zig = std.zig;
@@ -152,6 +133,14 @@ pub const CodeWriter = struct {
         } else {
             return self.string_pool.getOrPut(ident);
         }
+    }
+
+    // This struct owns returned string
+    fn getPrefixedIdentifier(self: *Self, ident: []const u8, prefix: []const u8) ![]const u8 {
+        var prefixed = std.fmt.allocPrint(self.allocator, "{s} {s}", .{ prefix, ident });
+        defer self.allocator.free(prefixed);
+
+        return try getIdentifier(prefixed);
     }
 
     // This struct owns returned string
@@ -187,71 +176,69 @@ pub const CodeWriter = struct {
         return try self.getIdentifier(res.items);
     }
 
-    fn writeType(self: *Self, writer: anytype, ty: types.TypeT) !void {
-        switch (ty.base_type) {
-            .Array => {
-                try writer.print("[{d}]", .{ty.fixed_len});
-                const next_type = types.TypeT{
-                    .base_type = ty.element,
-                    .index = ty.index,
-                    .is_packed = ty.is_packed,
+    fn getMaybeModuleTypeName(self: *Self, type_: Type) ![]const u8 {
+        switch (type_.base_type) {
+            .Array, .Vector => |t| {
+                const next_type = Type{
+                    .base_type = type_.element,
+                    .index = type_.index,
+                    .is_packed = type_.is_packed,
                 };
-                try self.writeType(writer, next_type);
-            },
-            .Vector => {
-                if (ty.is_packed) {
-                    try writer.writeAll("[]");
+                const next_name = try self.getMaybeModuleTypeName(next_type);
+                if (t == .Array) {
+                    return try std.fmt.allocPrint(self.allocator, "[{d}]{s}", .{ type_.fixed_len, next_name });
                 } else {
-                    try writer.writeAll("std.ArrayList(");
-                    try self.import_declarations.put("std", "std");
-                }
-                const next_type = types.TypeT{
-                    .base_type = ty.element,
-                    .index = ty.index,
-                    .is_packed = ty.is_packed,
-                };
-                try self.writeType(writer, next_type);
-                if (!ty.is_packed) try writer.writeByte(')');
-            },
-            .Obj => {
-                if (ty.is_optional) try writer.writeByte('?');
-                if (self.schema.Objects(@intCast(u32, ty.index))) |obj| {
-                    try self.writeTypeDeclaration(writer, obj);
-                } else {
-                    log.err("object type index {d} not in schema", .{ty.index});
-                    try writer.writeAll("not_in_schema");
+                    return try std.fmt.allocPrint(self.allocator, "[]{s}", .{next_name});
                 }
             },
-            .Union => {
-                if (self.schema.Enums(@intCast(u32, ty.index))) |enum_| {
-                    try self.writeTypeDeclaration(writer, enum_);
+            // Capture the modules.
+            else => |t| {
+                if (type_.child(self.schema)) |child| {
+                    const decl_name = getDeclarationName(child.declarationFile());
+                    const module = try self.getTypeName(decl_name, false);
+                    try self.addDeclaration(module);
+
+                    const typename = try self.getTypeName(child.name(), type_.is_packed);
+                    if (t == .Union) log.debug("utype {any} module {s} child {s}", .{ type_, child.declarationFile(), typename });
+                    return std.fmt.allocPrint(self.allocator, "{s}{s}.{s}{s}", .{ if (type_.is_optional) "?" else "", module, typename, if (t == .UType) ".Tag" else "" });
+                } else if (t == .UType or t == .Obj or t == .Union) {
+                    const err = try std.fmt.allocPrint(self.allocator, "type index {d} for {any} not in schema", .{ type_.index, t });
+                    log.err("{s}", .{err});
+                    return err;
                 } else {
-                    log.err("enum type index {d} not in schema", .{ty.index});
-                    try writer.writeAll("not_in_schema");
+                    return try std.fmt.allocPrint(self.allocator, "{s}", .{type_.name()});
                 }
             },
-            else => |t| try writer.writeAll(try getBaseType(t)),
         }
     }
 
     // This struct owns returned string.
-    fn getType(self: *Self, ty: types.Type, is_packed: bool, is_optional: bool) ![]const u8 {
-        var buf = std.ArrayList(u8).init(self.allocator);
-        defer buf.deinit();
-        var writer = buf.writer();
+    fn getType(self: *Self, type_: types.Type, is_packed: bool, is_optional: bool) ![]const u8 {
+        var ty = Type.init(type_);
+        ty.is_packed = is_packed;
+        ty.is_optional = is_optional;
 
-        var type_struct = types.TypeT.init(ty);
-        type_struct.is_packed = is_packed;
-        type_struct.is_optional = is_optional;
+        const maybe_module_type_name = try self.getMaybeModuleTypeName(ty);
+        defer self.allocator.free(maybe_module_type_name);
 
-        try self.writeType(writer, type_struct);
+        return self.string_pool.getOrPut(maybe_module_type_name);
+    }
 
-        return self.string_pool.getOrPut(buf.items);
+    // Caller owns returned slice.
+    fn sortedFields(self: *Self, object: types.Object) ![]types.Field {
+        var res = std.ArrayList(types.Field).init(self.allocator);
+        for (0..object.FieldsLen()) |i| try res.append(object.Fields(i).?);
+
+        std.sort.pdq(types.Field, res.items, {}, fieldLessThan);
+
+        return res.toOwnedSlice();
     }
 
     fn writeObjectFields(self: *Self, writer: anytype, object: types.Object, comptime is_packed: bool) !void {
-        for (0..object.FieldsLen()) |i| {
-            const field = object.Fields(i).?;
+        const fields = try self.sortedFields(object);
+        defer self.allocator.free(fields);
+
+        for (fields) |field| {
             const ty = field.Type().?;
             if (field.Deprecated() or ty.BaseType() == .UType) continue;
             const name = try self.getFieldName(field.Name());
@@ -265,6 +252,8 @@ pub const CodeWriter = struct {
                 try setter_buf.append(std.ascii.toUpper(getter_name[0]));
                 try setter_buf.appendSlice(getter_name[1..]);
                 const setter_name = setter_buf.items;
+
+                try writer.writeByte('\n');
                 switch (ty.BaseType()) {
                     .UType, .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
                         try writer.print(
@@ -272,7 +261,6 @@ pub const CodeWriter = struct {
                             \\pub fn {0s}(self: Self) {1s} {{
                             \\  return self.table.read({1s}, self.table._tab.pos + {3d});
                             \\}}
-                            \\
                             \\pub fn {2s}(self: Self, val: {1s}) void {{
                             \\  self.table._tab.mutate({1s}, self.table._tab.pos + {3d}, val);
                             \\}}
@@ -296,7 +284,7 @@ pub const CodeWriter = struct {
                         // > Vectors are stored as contiguous aligned scalar elements prefixed by a 32bit element count
                         try writer.print(
                             \\
-                            \\pub fn {0s}(self: Self) ?{1s} {{
+                            \\pub fn {0s}(self: Self) {1s} {{
                             \\  const len_offset = self.table.offset({2d});
                             \\  const len = if (len_offset == 0) 0 else self.table.vectorLen(len_offset);
                             \\  if (len == 0) return .{{}};
@@ -304,11 +292,12 @@ pub const CodeWriter = struct {
                             \\  return std.mem.bytesAsSlice({1s}, self.table.bytes[offset..@sizeOf({1s}) * len]);
                             \\}}
                         , .{ getter_name, typename, field.Offset() });
+                        try self.putDeclaration("std", "std");
                     },
                     .Obj => {
                         try writer.print(
                             \\
-                            \\pub fn {0s}(self: Self) ?{1s} {{
+                            \\pub fn {0s}(self: Self) {1s} {{
                             \\  const offset = self.table.offset({2d});
                             \\  if (offset == 0) {{
                             \\    // Vtable shows deprecated or out of bounds.
@@ -323,7 +312,7 @@ pub const CodeWriter = struct {
                     .Union => {
                         try writer.print(
                             \\
-                            \\pub fn {0s}(self: Self) ?{1s} {{
+                            \\pub fn {0s}(self: Self) {1s} {{
                             \\  const offset = self.table.offset({2d});
                             \\  if (offset == 0) {{
                             \\    // Vtable shows deprecated or out of bounds.
@@ -338,7 +327,7 @@ pub const CodeWriter = struct {
                     .Array => {
                         try writer.print(
                             \\
-                            \\pub fn {0s}(self: Self) ?{1s} {{
+                            \\pub fn {0s}(self: Self) {1s} {{
                             \\  // what to do for array at offset {2d}?
                             \\}}
                         , .{ getter_name, typename, field.Offset() });
@@ -348,6 +337,127 @@ pub const CodeWriter = struct {
             } else {
                 try writer.print("\n    {s}: {s},", .{ name, typename });
             }
+        }
+    }
+
+    // Struct owns returned string.
+    fn getDefault(self: *Self, field: types.Field) ![]const u8 {
+        const res = switch (field.Type().?.BaseType()) {
+            .UType => try std.fmt.allocPrint(self.allocator, "@intToEnum({s}, {d})", .{ try self.getType(field.Type().?, false, false), field.DefaultInteger() }),
+            .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => try std.fmt.allocPrint(self.allocator, "{d}", .{field.DefaultInteger()}),
+            .Float, .Double => try std.fmt.allocPrint(self.allocator, "{}", .{field.DefaultReal()}),
+            .String => try std.fmt.allocPrint(self.allocator, "\"\"", .{}),
+            .Vector, .Array => try std.fmt.allocPrint(self.allocator, "{s}", .{".{}"}),
+            .Obj => try std.fmt.allocPrint(self.allocator, "{s}", .{if (field.Optional()) "null" else ".{}"}),
+            else => |t| {
+                log.err("cannot get default for base type {any}", .{t});
+                return error.InvalidBaseType;
+            },
+        };
+        defer self.allocator.free(res);
+
+        return self.string_pool.getOrPut(res);
+    }
+
+    fn writePackForField(self: *Self, writer: anytype, field: types.Field, is_struct: bool) !void {
+        if (field.Padding() != 0) try writer.print("\n    builder.pad({d});", .{field.Padding()});
+        const field_name = try self.getFieldName(field.Name());
+        const ty = Type.initFromField(field);
+        switch (ty.base_type) {
+            .None => {},
+            .UType, .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double, .Array => {
+                if (ty.is_optional or is_struct) {
+                    try writer.print(
+                        \\
+                        \\    try builder.prepend({s}, self.{s});
+                    , .{ try self.getMaybeModuleTypeName(ty), field_name });
+                } else {
+                    try writer.print(
+                        \\
+                        \\    try builder.prependSlot({s}, {d}, self.{s}, {s});
+                    , .{ try self.getMaybeModuleTypeName(ty), field.Id(), field_name, try self.getDefault(field) });
+                }
+            },
+            .String => {
+                try writer.print(
+                    \\
+                    \\    try builder.prependSlotUOff({d}, try builder.createString(self.{s}), 0);
+                , .{ field.Id(), field_name });
+            },
+            .Vector => {
+                // > Nesting vectors is not supported, instead you can wrap the inner vector in a table.
+                // - https://flatbuffers.dev/flatbuffers_guide_writing_schema.html
+                const alignment = 1;
+                try writer.print(
+                    \\
+                    \\    try builder.startVector({0d}, self.{1s}.len, {2d});
+                    \\    for (self.{1s}) |ele| {{
+                , .{ ty.element_size, field_name, alignment });
+                const child_type = ty.child(self.schema).?.type_();
+                if (child_type.isScalar()) {
+                    try writer.print(
+                        \\
+                        \\    try builder.prepend({s}, ele);
+                    , .{field_name});
+                } else if (child_type.base_type == .String) {
+                    try writer.print(
+                        \\
+                        \\    try builder.prependSlotUOff({d}, try builder.createString(ele), 0);
+                    , .{field.Id()});
+                } else {
+                    try writer.print(
+                        \\
+                        \\    try builder.prependSlotUOff({d}, try ele.pack(builder), 0);
+                    , .{field.Id()});
+                }
+                try writer.print(
+                    \\
+                    \\    }}
+                    \\    try builder.endVector(self.{s}.len);
+                , .{field_name});
+            },
+            .Obj, .Union => {
+                try writer.print(
+                    \\
+                    \\    try builder.prependSlotUOff({d}, try self.{s}.pack(builder));
+                , .{ field.Id(), field_name });
+            },
+        }
+    }
+
+    fn writePackFn(self: *Self, writer: anytype, object: types.Object) !void {
+        try writer.writeAll(
+            \\
+            \\
+            \\pub fn pack(self: Self, builder: *flatbufferz.Builder) !u32 {
+        );
+        try self.putDeclaration("flatbufferz", "flatbufferz");
+        const fields = try self.sortedFields(object);
+        defer self.allocator.free(fields);
+        if (object.IsStruct()) {
+            try writer.print(
+                \\
+                \\    try builder.prep({d}, {d});
+            , .{ object.Minalign(), object.Bytesize() });
+        } else {
+            try writer.print(
+                \\
+                \\    try builder.startObject({d});
+            , .{fields.len});
+        }
+        for (fields) |field| try self.writePackForField(writer, field, object.IsStruct());
+        if (object.IsStruct()) {
+            try writer.writeAll(
+                \\
+                \\    return builder.offset();
+                \\}
+            );
+        } else {
+            try writer.writeAll(
+                \\
+                \\    return builder.endObject();
+                \\}
+            );
         }
     }
 
@@ -375,6 +485,7 @@ pub const CodeWriter = struct {
             try self.writeObjectFields(writer, object, is_packed);
             try writer.print(
                 \\
+                \\
                 \\pub const Self = @This();
                 \\
                 \\pub fn init(packed_struct: {0s}) !Self {{
@@ -385,19 +496,9 @@ pub const CodeWriter = struct {
                 \\    }}
                 \\    return res;
                 \\}}
-                \\
-                \\pub fn deinit(self: *Self) void {{
-                \\    inline for (@typeInfo(Self).Struct.fields) |f| {{
-                \\        if (@hasDecl(f.type, "deinit")) {{
-                \\            @field(self, f.name).deinit();
-                \\        }}
-                \\    }}
-                \\}}
-                \\
-                \\pub fn pack(self: Self, builder: flatbufferz.Builder) !u32 {{
-                \\    return {0s}.Create(builder, self);
-                \\}}
             , .{packed_name});
+            try self.writePackFn(writer, object);
+
             try self.putDeclaration("flatbufferz", "flatbufferz");
         }
         try self.putDeclaration("flatbufferz", "flatbufferz");
@@ -444,7 +545,7 @@ pub const CodeWriter = struct {
             }
             try writer.writeAll(") {");
         } else {
-            const typename = try getBaseType(enum_.UnderlyingType().?.BaseType());
+            const typename = try self.getType(enum_.UnderlyingType().?, false, false);
             try writer.print(" enum({s}) {{", .{typename});
         }
         try self.writeEnumFields(writer, enum_, is_union, false);

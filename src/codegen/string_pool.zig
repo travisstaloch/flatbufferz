@@ -25,14 +25,13 @@ pub const StringPool = struct {
     }
 
     pub fn getOrPut(self: *Self, string: []const u8) ![]const u8 {
-        if (self.lookup.getKey(string)) |s| {
-            return s;
-        } else {
+        const get_or_put = try self.lookup.getOrPut(self.allocator, string);
+        if (!get_or_put.found_existing) {
             const owned = try self.allocator.alloc(u8, string.len);
             @memcpy(owned, string);
             try self.data.append(self.allocator, owned);
-            try self.lookup.put(self.allocator, owned, {});
-            return owned;
+            get_or_put.key_ptr.* = owned;
         }
+        return get_or_put.key_ptr.*;
     }
 };

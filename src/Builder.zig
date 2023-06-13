@@ -34,7 +34,6 @@ pub const file_identifier_len: i32 = @typeInfo(Fid).Array.len;
 pub const size_prefix_length = 4;
 
 pub const size_u8 = @sizeOf(u8);
-pub const size_byte = size_u8;
 pub const size_u16 = @sizeOf(u16);
 pub const size_u32 = @sizeOf(u32);
 pub const size_u64 = @sizeOf(u64);
@@ -402,23 +401,7 @@ pub fn createString(b: *Builder, s: []const u8) !u32 {
     try b.checkNotNested();
     b.nested = true;
     b.debug("createString() '{s}'", .{s});
-    try b.prep(size_u32, @intCast(i32, s.len + 1) * size_byte);
-    b.place(u8, 0);
-
-    const l = @intCast(u32, s.len);
-
-    b.head -= l;
-    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
-
-    return b.endVector(@intCast(u32, s.len));
-}
-
-/// writes a byte slice as a []const u8 (null-terminated).
-pub fn createByteString(b: *Builder, s: []const u8) !u32 {
-    try b.checkNotNested();
-    b.nested = true;
-
-    try b.prep(size_u32, (@intCast(i32, s.len) + 1) * size_byte);
+    try b.prep(size_u32, @intCast(i32, s.len + 1));
     b.place(u8, 0);
 
     const l = @intCast(u32, s.len);
@@ -434,7 +417,7 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     try b.checkNotNested();
     b.nested = true;
 
-    try b.prep(size_u32, @intCast(i32, v.len * size_byte));
+    try b.prep(size_u32, @intCast(i32, v.len));
 
     const l = @intCast(u32, v.len);
 

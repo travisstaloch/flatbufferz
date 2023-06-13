@@ -34,7 +34,6 @@ pub const BaseType = enum(i8) {
     Obj = 15,
     Union = 16,
     Array = 17,
-    MaxBaseType = 18,
     pub fn tagName(v: @This()) []const u8 {
         return @tagName(v);
     }

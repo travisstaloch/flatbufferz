@@ -129,7 +129,7 @@ pub const CodeWriter = struct {
         // This prevents CodeWriter having to return a ArrayList([]const u8) and codegen accumulating it
         // into a StringHashMap
         const fname = self.fname[self.opts.gen_path.len..];
-        try writer.print("pub const {s} = @import(\".{s}\");", .{ declaration, fname });
+        try writer.print("pub const {0s} = @import(\".{1s}\").{0s};", .{ declaration, fname });
     }
 
     // This struct owns returned string
@@ -220,7 +220,9 @@ pub const CodeWriter = struct {
                     const module = try self.getPrefixedTypeName(decl_name, " types");
                     try self.addDeclaration(module);
 
-                    const typename = try self.getTypeName(child.name(), type_.is_packed);
+                    const is_packed = (type_.base_type == .Union or type_.base_type == .Obj) and type_.is_packed;
+
+                    const typename = try self.getTypeName(child.name(), is_packed);
                     return std.fmt.allocPrint(self.allocator, "{s}{s}.{s}{s}", .{ if (type_.is_optional) "?" else "", module, typename, if (t == .UType) ".Tag" else "" });
                 } else if (t == .UType or t == .Obj or t == .Union) {
                     const err = try std.fmt.allocPrint(self.allocator, "type index {d} for {any} not in schema", .{ type_.index, t });
@@ -308,7 +310,7 @@ pub const CodeWriter = struct {
                             \\pub fn {0s}(self: Self) {1s} {{
                             \\  const len_offset = self.table.offset({2d});
                             \\  const len = if (len_offset == 0) 0 else self.table.vectorLen(len_offset);
-                            \\  if (len == 0) return .{{}};
+                            \\  if (len == 0) return &.{{}};
                             \\  const offset = self.table.vector(len_offset);
                             \\  return std.mem.bytesAsSlice({1s}, self.table.bytes[offset..@sizeOf({1s}) * len]);
                             \\}}
@@ -462,33 +464,42 @@ pub const CodeWriter = struct {
         }
         try writer.writeByte('\n');
 
-        if (object.IsStruct()) {
-            try writer.print(
-                \\
-                \\    try builder.prep({d}, {d});
-            , .{ object.Minalign(), object.Bytesize() });
+        if (fields.len > 0) {
+            if (object.IsStruct()) {
+                try writer.print(
+                    \\
+                    \\    try builder.prep({d}, {d});
+                , .{ object.Minalign(), object.Bytesize() });
+            } else {
+                try writer.print(
+                    \\
+                    \\    try builder.startObject({d});
+                , .{fields.len});
+            }
         } else {
-            try writer.print(
+            try writer.writeAll(
                 \\
-                \\    try builder.startObject({d});
-            , .{fields.len});
+                \\    _ = self;
+                \\    _ = builder;
+            );
         }
 
         try writer.writeAll(field_pack_code.items);
 
-        if (object.IsStruct()) {
-            try writer.writeAll(
-                \\
-                \\    return builder.offset();
-                \\}
-            );
-        } else {
-            try writer.writeAll(
-                \\
-                \\    return builder.endObject();
-                \\}
-            );
+        if (fields.len > 0) {
+            if (object.IsStruct()) {
+                try writer.writeAll(
+                    \\
+                    \\    return builder.offset();
+                );
+            } else {
+                try writer.writeAll(
+                    \\
+                    \\    return builder.endObject();
+                );
+            }
         }
+        try writer.writeAll("\n}");
     }
 
     fn writeObjectPacked(self: *Self, writer: anytype, index_writer: anytype, object: types.Object, comptime is_packed: bool) !void {
@@ -503,10 +514,15 @@ pub const CodeWriter = struct {
                 \\
                 \\table: flatbufferz.Table,
                 \\
-                \\pub const Self = @This();
+                \\const Self = @This();
                 \\
-                \\pub fn init(bytes: []u8) !Self {
+                \\pub fn init(bytes: []u8) Self {
                 \\    return .{ .table = .{ ._tab = .{ .bytes = bytes, .pos = 0 } } };
+                \\}
+                \\
+                \\pub fn initRoot(bytes: []u8) Self {
+                \\    const size = flatbufferz.encode.read(u32, bytes);
+                \\    return Self.init(bytes[size + @sizeOf(u32)..]);
                 \\}
             );
             try self.putDeclaration("flatbufferz", "flatbufferz");
@@ -518,11 +534,12 @@ pub const CodeWriter = struct {
             try writer.print(
                 \\
                 \\
-                \\pub const Self = @This();
+                \\const Self = @This();
                 \\
-                \\pub fn init(packed_struct: {0s}) !Self {{
+                \\pub fn init(packed_struct: {s}) !Self {{
+                \\    {s}
                 \\    return .{{
-            , .{packed_name});
+            , .{ packed_name, if (object.FieldsLen() == 0) "_ = packed_struct;" else "" });
             for (0..object.FieldsLen()) |i| {
                 const field = object.Fields(i).?;
                 if (field.Type().?.BaseType() == .UType) continue;
@@ -584,14 +601,14 @@ pub const CodeWriter = struct {
             if (is_packed) {
                 try writer.writeAll("enum");
             } else {
-                try writer.print("{s}.Tag", .{name});
+                try writer.print("{s}.Tag", .{packed_name});
             }
             try writer.writeAll(") {");
         } else {
             const typename = Type.init(underlying).name();
             try writer.print(" enum({s}) {{", .{typename});
         }
-        try self.writeEnumFields(writer, enum_, is_union, false);
+        try self.writeEnumFields(writer, enum_, is_union, is_packed);
         if (is_union) {
             if (is_packed) {
                 try writer.writeAll("\n\npub const Tag = std.meta.Tag(@This());");

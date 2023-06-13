@@ -34,4 +34,10 @@ pub const StringPool = struct {
         }
         return get_or_put.key_ptr.*;
     }
+
+    pub fn getOrPutFmt(self: *Self, comptime fmt: []const u8, args: anytype) ![]const u8 {
+        const value = try std.fmt.allocPrint(self.allocator, fmt, args);
+        defer self.allocator.free(value);
+        return try self.getOrPut(value);
+    }
 };

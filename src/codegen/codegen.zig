@@ -45,14 +45,17 @@ fn getFilename(allocator: Allocator, opts: Options, name: []const u8) ![]const u
 }
 
 fn createFile(fname: []const u8) !std.fs.File {
-    const dir = std.fs.path.dirname(fname).?;
-    std.fs.cwd().makePath(dir) catch |e| switch (e) {
-        error.PathAlreadyExists => {},
-        else => {
-            log.err("couldn't make dir {?s}", .{dir});
-            return e;
-        },
-    };
+    if (std.fs.path.dirname(fname)) |dir| {
+        std.fs.cwd().makePath(dir) catch |e| switch (e) {
+            error.PathAlreadyExists => {},
+            else => {
+                log.err("couldn't make dir {?s}", .{dir});
+                return e;
+            },
+        };
+    } else {
+        log.warn("path {s} has no dir", .{fname});
+    }
 
     return try std.fs.cwd().createFile(fname, .{});
 }
@@ -75,23 +78,31 @@ fn format(allocator: Allocator, fname: []const u8, code: [:0]const u8) ![]const 
 }
 
 // Caller owns memory.
-fn getCodeBody(allocator: Allocator, code_writer: *CodeWriter, obj: Object) ![]const u8 {
+fn getCodeBody(allocator: Allocator, code_writer: *CodeWriter, index_writer: anytype, obj: Object) ![]const u8 {
     var res = std.ArrayList(u8).init(allocator);
     switch (obj) {
-        .enum_ => |e| try code_writer.writeEnum(res.writer(), e),
-        .object => |o| try code_writer.writeObject(res.writer(), o),
+        .enum_ => |e| try code_writer.writeEnum(res.writer(), index_writer, e),
+        .object => |o| try code_writer.writeObject(res.writer(), index_writer, o),
     }
     return res.toOwnedSlice();
 }
 
 // Caller owns memory.
-fn getCode(allocator: Allocator, opts: Options, prelude: Prelude, schema: Schema, obj: Object) ![:0]const u8 {
+fn getCode(
+    allocator: Allocator,
+    index_writer: anytype,
+    fname: []const u8,
+    opts: Options,
+    prelude: Prelude,
+    schema: Schema,
+    obj: Object,
+) ![:0]const u8 {
     var res = std.ArrayList(u8).init(allocator);
-    var code_writer = CodeWriter.init(allocator, schema, opts);
+    var code_writer = CodeWriter.init(allocator, schema, opts, fname);
     defer code_writer.deinit();
 
     // Write code body to temporary buffer to gather import declarations.
-    const code_body = try getCodeBody(allocator, &code_writer, obj);
+    const code_body = try getCodeBody(allocator, &code_writer, index_writer, obj);
     defer allocator.free(code_body);
 
     try code_writer.writePrelude(res.writer(), prelude, obj.name());
@@ -99,14 +110,9 @@ fn getCode(allocator: Allocator, opts: Options, prelude: Prelude, schema: Schema
     return try res.toOwnedSliceSentinel(0);
 }
 
-fn writeFile(allocator: Allocator, opts: Options, prelude: Prelude, schema: Schema, obj: Object) !void {
-    const fname = try getFilename(allocator, opts, obj.name());
-    defer allocator.free(fname);
+fn writeFormattedCode(allocator: Allocator, fname: []const u8, code: [:0]const u8) !void {
     var file = try createFile(fname);
     defer file.close();
-
-    const code = try getCode(allocator, opts, prelude, schema, obj);
-    defer allocator.free(code);
 
     const formatted_code = try format(allocator, fname, code);
     defer allocator.free(formatted_code);
@@ -114,11 +120,9 @@ fn writeFile(allocator: Allocator, opts: Options, prelude: Prelude, schema: Sche
     try file.writeAll(formatted_code);
 }
 
-const Names = std.ArrayList([]const u8);
-
 fn writeFiles(
     allocator: Allocator,
-    names: *Names,
+    index_writer: anytype,
     opts: Options,
     prelude: Prelude,
     schema: Schema,
@@ -138,8 +142,13 @@ fn writeFiles(
         const same_file = decl_file.len == 0 or std.mem.eql(u8, decl_file, prelude.file_ident);
         if (!same_file) continue;
 
-        try writeFile(allocator, opts, prelude, schema, obj);
-        try names.append(obj.name());
+        const fname = try getFilename(allocator, opts, obj.name());
+        defer allocator.free(fname);
+
+        const code = try getCode(allocator, index_writer, fname, opts, prelude, schema, obj);
+        defer allocator.free(code);
+
+        try writeFormattedCode(allocator, fname, code);
     }
 }
 
@@ -151,18 +160,13 @@ fn getSchema(allocator: Allocator, bfbs_path: []const u8) !Schema {
     return Schema.GetRootAs(bfbs, 0);
 }
 
-// Caller owns memory
-fn getFileIdent(allocator: Allocator, bfbs_path: []const u8) ![]const u8 {
-    const basename = getBasename(bfbs_path);
-    const no_ext = basename[0 .. basename.len - 5];
-    return try std.fmt.allocPrint(allocator, "//{s}.fbs", .{no_ext});
-}
-
 pub fn codegen(allocator: Allocator, bfbs_path: []const u8, filename_noext: []const u8, opts: Options) !void {
     const schema = try getSchema(allocator, bfbs_path);
     defer allocator.free(schema._tab.bytes);
 
-    const file_ident = try getFileIdent(allocator, bfbs_path);
+    const basename = getBasename(bfbs_path);
+    const no_ext = basename[0 .. basename.len - 5];
+    const file_ident = try std.fmt.allocPrint(allocator, "//{s}.fbs", .{no_ext});
     defer allocator.free(file_ident);
     log.debug("file_ident={s}", .{file_ident});
 
@@ -172,11 +176,16 @@ pub fn codegen(allocator: Allocator, bfbs_path: []const u8, filename_noext: []co
         .file_ident = file_ident,
     };
 
-    var names = Names.init(allocator);
-    defer names.deinit();
+    var index_code = std.ArrayList(u8).init(allocator);
+    defer index_code.deinit();
+    var index_writer = index_code.writer();
 
-    try writeFiles(allocator, &names, opts, prelude, schema, .enum_);
-    try writeFiles(allocator, &names, opts, prelude, schema, .object);
+    try writeFiles(allocator, index_writer, opts, prelude, schema, .enum_);
+    try writeFiles(allocator, index_writer, opts, prelude, schema, .object);
 
-    // for (names.items) |name| log.debug("{s} {s}", .{ name});
+    const index_basename = try std.fmt.allocPrint(allocator, "{s}Types", .{no_ext});
+    defer allocator.free(index_basename);
+    const index_fname = try getFilename(allocator, opts, index_basename);
+    defer allocator.free(index_fname);
+    try writeFormattedCode(allocator, index_fname, try index_code.toOwnedSliceSentinel(0));
 }

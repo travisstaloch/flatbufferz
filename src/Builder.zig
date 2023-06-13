@@ -398,6 +398,8 @@ pub fn createSharedString(b: *Builder, s: []const u8) !u32 {
 
 /// writes a null-terminated []const u8 as a vector.
 pub fn createString(b: *Builder, s: []const u8) !u32 {
+    if (s.len == 0) return 0;
+
     try b.checkNotNested();
     b.nested = true;
     b.debug("createString() '{s}'", .{s});
@@ -425,6 +427,56 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], v);
 
     return b.endVector(@intCast(u32, v.len));
+}
+
+fn isScalar(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .Void,
+        .Bool,
+        .NoReturn,
+        .Int,
+        .Float,
+        .Pointer,
+        .Optional,
+        .ErrorSet,
+        .Enum,
+        .AnyFrame,
+        .Vector,
+        => true,
+
+        .Struct => |s| s.layout == .Packed,
+        .Union => |u| u.layout == .Packed,
+        else => false,
+    };
+}
+
+pub fn createVector(b: *Builder, comptime T: type, slice: []T, element_size: usize, alignment: usize) !u32 {
+    try b.startVector(element_size, slice.len, alignment);
+
+    if (comptime isScalar(T)) {
+        var i: usize = slice.len;
+        while (i > 0) : (i -= 1) {
+            try b.prepend(T, slice[i]);
+        }
+    } else {
+        var element_offsets = try b.alloc.alloc(u32, slice.len);
+        defer b.alloc.free(element_offsets.deinit);
+        var i: usize = slice.len;
+        while (i > 0) : (i -= 1) {
+            if (T == []const u8) {
+                element_offsets[i] = try b.createString(slice[i]);
+            } else {
+                element_offsets[i] = try slice[i].pack(b);
+            }
+        }
+
+        i = slice.len;
+        while (i > 0) : (i -= 1) {
+            try b.prependUOff(element_offsets[i]);
+        }
+    }
+
+    return b.endVector(slice.len);
 }
 
 fn checkNested(b: *Builder) !void {

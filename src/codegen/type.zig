@@ -33,12 +33,20 @@ fn scalarName(base_type: refl.BaseType) []const u8 {
     };
 }
 
+fn isBaseScalar(base_type: refl.BaseType) bool {
+    return switch (base_type) {
+        .None, .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double, .String => true,
+        else => false,
+    };
+}
+
 pub const Child = union(enum) {
     scalar: refl.BaseType,
     enum_: refl.Enum,
     object_: refl.Object,
 
     const Self = @This();
+    const Tag = std.meta.Tag(Self);
 
     pub fn name(self: Self) []const u8 {
         return switch (self) {
@@ -65,6 +73,13 @@ pub const Child = union(enum) {
                 .base_type = .Obj,
                 .index = 0,
             },
+        };
+    }
+
+    pub fn isStruct(self: Self) bool {
+        return switch (self) {
+            .object_ => |o| o.IsStruct(),
+            else => false,
         };
     }
 };
@@ -101,16 +116,13 @@ pub const Type = struct {
     }
 
     pub fn isScalar(self: Self) bool {
-        return switch (self.base_type) {
-            .None, .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double, .String => false,
-            else => false,
-        };
+        return isBaseScalar(self.base_type);
     }
 
     pub fn child(self: Self, schema: refl.Schema) ?Child {
         switch (self.base_type) {
             .Array, .Vector => {
-                if (self.element != .None) return Child{ .scalar = self.element };
+                if (isBaseScalar(self.element)) return Child{ .scalar = self.element };
                 const next_type = Self{ .base_type = self.element, .index = self.index, .is_packed = self.is_packed };
                 return next_type.child(schema);
             },
@@ -133,5 +145,18 @@ pub const Type = struct {
 
     pub fn name(self: Self) []const u8 {
         return scalarName(self.base_type);
+    }
+
+    pub fn size(self: Self, schema: refl.Schema) !usize {
+        if (self.element_size > 0) return self.element_size;
+
+        return switch (self.base_type) {
+            inline else => |t| @sizeOf(ToType(t)),
+            .Vector, .Union, .Array, .Obj => self.child(schema).?.type_().size(schema),
+            .UType => |t| {
+                log.err("invalid scalar type {any}", .{t});
+                return error.NoSize;
+            },
+        };
     }
 };

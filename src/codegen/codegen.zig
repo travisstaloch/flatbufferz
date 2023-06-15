@@ -11,26 +11,7 @@ const BaseType = types.BaseType;
 const Schema = types.Schema;
 const Prelude = types.Prelude;
 const log = types.log;
-
-const Object = union(enum) {
-    enum_: types.Enum,
-    object: types.Object,
-
-    const Self = @This();
-    const Tag = std.meta.Tag(Self);
-
-    pub fn declarationFile(self: Self) []const u8 {
-        return switch (self) {
-            inline else => |t| t.DeclarationFile(),
-        };
-    }
-
-    pub fn name(self: Self) []const u8 {
-        return switch (self) {
-            inline else => |t| t.Name(),
-        };
-    }
-};
+const SchemaObj = writer_mod.SchemaObj;
 
 fn getFilename(allocator: Allocator, opts: Options, name: []const u8) ![]const u8 {
     var res = std.ArrayList(u8).init(allocator);
@@ -78,35 +59,25 @@ fn format(allocator: Allocator, fname: []const u8, code: [:0]const u8) ![]const 
 }
 
 // Caller owns memory.
-fn getCodeBody(allocator: Allocator, code_writer: *CodeWriter, index_writer: anytype, obj: Object) ![]const u8 {
-    var res = std.ArrayList(u8).init(allocator);
-    switch (obj) {
-        .enum_ => |e| try code_writer.writeEnum(res.writer(), index_writer, e),
-        .object => |o| try code_writer.writeObject(res.writer(), index_writer, o),
-    }
-    return res.toOwnedSlice();
-}
-
-// Caller owns memory.
 fn getCode(
     allocator: Allocator,
-    index_writer: anytype,
-    fname: []const u8,
     opts: Options,
     prelude: Prelude,
     schema: Schema,
-    obj: Object,
+    n_dirs: usize,
+    obj: SchemaObj,
 ) ![:0]const u8 {
     var res = std.ArrayList(u8).init(allocator);
-    var code_writer = CodeWriter.init(allocator, schema, opts, fname);
+    var code_writer = CodeWriter.init(allocator, schema, opts, n_dirs);
     defer code_writer.deinit();
 
     // Write code body to temporary buffer to gather import declarations.
-    const code_body = try getCodeBody(allocator, &code_writer, index_writer, obj);
-    defer allocator.free(code_body);
+    var body = std.ArrayList(u8).init(allocator);
+    defer body.deinit();
+    try code_writer.write(body.writer(), obj);
 
     try code_writer.writePrelude(res.writer(), prelude, obj.name());
-    try res.appendSlice(code_body);
+    try res.appendSlice(body.items);
     return try res.toOwnedSliceSentinel(0);
 }
 
@@ -122,11 +93,10 @@ fn writeFormattedCode(allocator: Allocator, fname: []const u8, code: [:0]const u
 
 fn writeFiles(
     allocator: Allocator,
-    index_writer: anytype,
     opts: Options,
     prelude: Prelude,
     schema: Schema,
-    comptime kind: Object.Tag,
+    comptime kind: SchemaObj.Tag,
 ) !void {
     const len = switch (kind) {
         .enum_ => schema.EnumsLen(),
@@ -134,7 +104,7 @@ fn writeFiles(
     };
 
     for (0..len) |i| {
-        const obj: Object = switch (kind) {
+        const obj: SchemaObj = switch (kind) {
             .enum_ => .{ .enum_ = schema.Enums(i).? },
             .object => .{ .object = schema.Objects(i).? },
         };
@@ -143,9 +113,11 @@ fn writeFiles(
         if (!same_file) continue;
 
         const fname = try getFilename(allocator, opts, obj.name());
+        log.debug("fname {s}", .{fname});
         defer allocator.free(fname);
+        const n_dirs = std.mem.count(u8, obj.name(), ".");
 
-        const code = try getCode(allocator, index_writer, fname, opts, prelude, schema, obj);
+        const code = try getCode(allocator, opts, prelude, schema, n_dirs, obj);
         defer allocator.free(code);
 
         try writeFormattedCode(allocator, fname, code);
@@ -176,16 +148,6 @@ pub fn codegen(allocator: Allocator, bfbs_path: []const u8, filename_noext: []co
         .file_ident = file_ident,
     };
 
-    var index_code = std.ArrayList(u8).init(allocator);
-    defer index_code.deinit();
-    var index_writer = index_code.writer();
-
-    try writeFiles(allocator, index_writer, opts, prelude, schema, .enum_);
-    try writeFiles(allocator, index_writer, opts, prelude, schema, .object);
-
-    const index_basename = try std.fmt.allocPrint(allocator, "{s}Types", .{no_ext});
-    defer allocator.free(index_basename);
-    const index_fname = try getFilename(allocator, opts, index_basename);
-    defer allocator.free(index_fname);
-    try writeFormattedCode(allocator, index_fname, try index_code.toOwnedSliceSentinel(0));
+    try writeFiles(allocator, opts, prelude, schema, .enum_);
+    try writeFiles(allocator, opts, prelude, schema, .object);
 }

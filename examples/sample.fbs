@@ -15,6 +15,10 @@ struct Vec3 (force_align: 8) {
   z:float;
 }
 
+struct Vec4 {
+	vals: [float:4];
+}
+
 table Monster {
   pos:Vec3 (id: 0);
   mana:short = 150 (id: 1);
@@ -24,6 +28,7 @@ table Monster {
   color_:Color = Blue (id: 5);
   weapons: [Weapon] (id: 6);
   equipped: Equipment (id: 8);
+  rotation: Vec4 (id: 9);
 }
 
 table Weapon {

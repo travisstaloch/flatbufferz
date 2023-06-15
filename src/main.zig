@@ -5,13 +5,6 @@ const clap = @import("zig-clap");
 const util = fb.util;
 const build_options = @import("build_options");
 
-pub const std_options = struct {
-    pub const log_level = std.meta.stringToEnum(
-        std.log.Level,
-        @tagName(@import("build_options").log_level),
-    ).?;
-};
-
 fn usage(params: []const clap.Param(clap.Help), res: anytype) !void {
     std.debug.print("usage: {s} <args> <files>\n<files>: either .fbs or .bfbs files.\n<args>:\n", .{res.exe_arg.?});
     try clap.help(std.io.getStdErr().writer(), clap.Help, params, .{});
@@ -22,8 +15,7 @@ const clap_params = clap.parseParamsComptime(
     \\--bfbs-to-fbs           Interpret positionals as .bfbs files and convert them to .fbs.  Prints to stdout.
     \\-o, --output-path <str> Path to write generated content to
     \\-I, --include-dir <str>... Adds an include directory which gets passed on to flatc.
-    //--gen-onefile           Write all output to a single file.
-    //--keep-prefix           Keep original prefix of schema include statements.
+    \\-l, --lib-path <str> Path to write generated lib file to
     \\<str>...                Files
     \\
 );
@@ -109,8 +101,8 @@ pub fn main() !void {
                 std.os.exit(1);
             };
             const opts = fb.codegen.Options{
-                .write_index = true,
-                .extension = ".zig",
+                .extension = ".fb.zig",
+                .lib_path = res.args.@"lib-path",
                 .gen_path = gen_path,
             };
             try fb.codegen.codegen(alloc, bfbs_path, filename_noext, opts);

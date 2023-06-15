@@ -23,6 +23,11 @@ pub const Struct = struct {
     pub fn read(s: Struct, comptime T: type, off: u32) T {
         return encode.read(T, s._tab.bytes[off..]);
     }
+
+    // > Arrays are currently only supported in a struct.
+    pub fn readArray(s: Struct, comptime T: type, off: u32) []T {
+        return std.mem.bytesAsSlice(T, s._tab.bytes[off..]);
+    }
 };
 
 pub fn init(bytes: []u8, pos: u32) Table {

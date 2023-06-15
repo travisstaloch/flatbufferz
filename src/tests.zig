@@ -8,8 +8,8 @@ const testing = std.testing;
 const fb = @import("flatbufferz");
 const Builder = fb.Builder;
 const gen = @import("generated");
-const Monster = gen.MyGame_Example_Monster.Monster;
-const MonsterT = gen.MyGame_Example_Monster.MonsterT;
+const Monster = gen.MyGame_Example_Monster;
+const MonsterT = gen.MyGame_Example_Monster;
 const Test = gen.MyGame_Example_Test.Test;
 const Vec3 = gen.MyGame_Example_Vec3.Vec3;
 const Color = gen.MyGame_Example_Color.Color;
@@ -137,7 +137,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         defer b.deinitAll();
 
         try check(&[_]u8{}, b, &i);
-        _ = try b.startVector(fb.Builder.size_byte, 1, 1);
+        _ = try b.startVector(fb.Builder.size_u8, 1, 1);
         try check(&[_]u8{ 0, 0, 0 }, b, &i); // align to 4byte
         try b.prepend(u8, 1);
         try check(&[_]u8{ 1, 0, 0, 0 }, b, &i);
@@ -148,7 +148,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
-        _ = try b.startVector(fb.Builder.size_byte, 2, 1);
+        _ = try b.startVector(fb.Builder.size_u8, 2, 1);
         try check(&[_]u8{ 0, 0 }, b, &i); // align to 4byte
         try b.prepend(u8, 1);
         try check(&[_]u8{ 1, 0, 0 }, b, &i);
@@ -161,7 +161,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         var b = try Builder.initCapacity(alloc, 12);
         defer b.deinitAll();
 
-        _ = try b.startVector(fb.Builder.size_byte, 8, 1);
+        _ = try b.startVector(fb.Builder.size_u8, 8, 1);
         var start = std.ArrayList(u8).init(alloc);
         defer start.deinit();
         try check(start.items, b, &i);
@@ -233,9 +233,9 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
-        _ = try b.createByteString("foo");
+        _ = try b.createString("foo");
         try check(&[_]u8{ 3, 0, 0, 0, 'f', 'o', 'o', 0 }, b, &i); // 0-terminated, no pa
-        _ = try b.createByteString("moop");
+        _ = try b.createString("moop");
         try check(&[_]u8{
             4, 0, 0, 0, 'm', 'o', 'o', 'p', 0, 0, 0, 0, // 0-terminated, 3-byte pa
             3, 0, 0, 0, 'f', 'o', 'o', 0,
@@ -341,7 +341,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
-        _ = try b.startVector(fb.Builder.size_byte, 0, 1);
+        _ = try b.startVector(fb.Builder.size_u8, 0, 1);
         const vecend = try b.endVector(0);
         _ = try b.startObject(1);
         try b.prependSlotUOff(0, vecend, 0);
@@ -360,7 +360,7 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         var b = Builder.init(alloc);
         defer b.deinitAll();
 
-        _ = try b.startVector(fb.Builder.size_byte, 0, 1);
+        _ = try b.startVector(fb.Builder.size_u8, 0, 1);
         const vecend = try b.endVector(0);
         _ = try b.startObject(2);
         try b.prependSlot(i16, 0, 55, 0);

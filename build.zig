@@ -4,14 +4,7 @@ const sdk = @import("sdk.zig");
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-
-    const log_level = b.option(
-        std.log.Level,
-        "log-level",
-        "The log level for the application. default .warn",
-    ) orelse .debug;
     const build_options = b.addOptions();
-    build_options.addOption(std.log.Level, "log_level", log_level);
 
     // expose module 'flatbufferz' to dependees
     const lib_mod = b.addModule(
@@ -39,8 +32,6 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(exe);
 
     const exe_run = b.addRunArtifact(exe);
-    exe_run.has_side_effects = true;
-    exe_run.step.dependOn(b.getInstallStep());
     if (b.args) |args| exe_run.addArgs(args);
 
     const run_step = b.step("run", "Run the app");

@@ -451,6 +451,8 @@ fn isScalar(comptime T: type) bool {
 }
 
 pub fn createVector(b: *Builder, comptime T: type, slice: []T, element_size: usize, alignment: usize) !u32 {
+    // > Nesting vectors is not supported, instead you can wrap the inner vector in a table.
+    // - https://flatbuffers.dev/flatbuffers_guide_writing_schema.html
     try b.startVector(element_size, slice.len, alignment);
 
     if (comptime isScalar(T)) {

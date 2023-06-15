@@ -17,8 +17,8 @@ pub const TypenameSet = std.StringHashMap(BaseType);
 pub const log = std.log;
 
 pub const Options = struct {
-    write_index: bool,
     extension: []const u8,
+    lib_path: []const u8,
     gen_path: []const u8,
 };
 

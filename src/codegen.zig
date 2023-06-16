@@ -77,9 +77,16 @@ fn lastName(namespaced_name: []const u8) []const u8 {
     return namespaced_name[last_dot..];
 }
 
+pub fn firstName(namespaced_name: []const u8) []const u8 {
+    const first_dot = if (std.mem.indexOfScalar(u8, namespaced_name, '.')) |i| i else namespaced_name.len;
+    return namespaced_name[0..first_dot];
+}
+
 pub const CamelUpperFmt = struct {
     s: []const u8,
     imports: *const TypenameSet,
+    prefix: []const u8 = "",
+    suffix: []const u8 = "",
 
     pub fn format(
         v: CamelUpperFmt,
@@ -90,11 +97,41 @@ pub const CamelUpperFmt = struct {
         var buf: [std.fs.MAX_NAME_BYTES]u8 = undefined;
         var fbs = std.io.fixedBufferStream(&buf);
         const bufwriter = fbs.writer();
+        _ = bufwriter.write(v.prefix) catch return error.OutOfMemory;
         util.toCamelCase(v.s, true, bufwriter) catch return error.OutOfMemory;
+        _ = bufwriter.write(v.suffix) catch return error.OutOfMemory;
+        //
+        // prevent namespace collisions by appending underscores
+        //
+        // if a field name matches an imported namespace, append '_' to the field name
         while (v.imports.contains(fbs.getWritten())) {
             bufwriter.writeByte('_') catch return error.OutOfMemory;
         }
+        // if a field has the same name as the first component of an imported namespace,
+        // append '_' to the field name
+        var iter = v.imports.iterator();
+        while (true) {
+            while (iter.next()) |e| {
+                const first = firstName(e.key_ptr.*);
+                if (mem.eql(u8, first, fbs.getWritten())) {
+                    bufwriter.writeByte('_') catch return error.OutOfMemory;
+                    break;
+                }
+            } else break;
+        }
         _ = try writer.write(fbs.getWritten());
+    }
+
+    pub fn withPrefix(f: CamelUpperFmt, prefix: []const u8) CamelUpperFmt {
+        var r = f;
+        r.prefix = prefix;
+        return r;
+    }
+
+    pub fn withSuffix(f: CamelUpperFmt, suffix: []const u8) CamelUpperFmt {
+        var r = f;
+        r.suffix = suffix;
+        return r;
     }
 };
 
@@ -292,6 +329,7 @@ fn genNativeUnion(
     try writer.print(
         \\
         \\pub fn deinit(self: *{s}T, allocator: std.mem.Allocator) void {{
+        \\_ = .{{self, allocator}};
         \\switch (self.*) {{
         \\
     , .{last_name});
@@ -331,6 +369,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
     try writer.print(
         \\
         \\pub fn Pack(rcv: {0s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) !u32 {{
+        \\_ = .{{__builder, __pack_opts}};
         \\{1s}std.debug.print("pack() {0s}T rcv=.{{s}}\n", .{{@tagName(rcv)}});
         \\switch (rcv) {{
         \\
@@ -362,8 +401,8 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
 
     try writer.print(
         \\pub fn Unpack(rcv: {0s}.Tag, table: fb.Table, __pack_opts: fb.common.PackOptions) !{1s}T {{
+        \\_ = .{{table, __pack_opts}};
         \\{2s}std.debug.print("unpack() {0s} rcv=.{{s}}\n", .{{@tagName(rcv)}});
-        \\_ = .{{__pack_opts}};
         \\switch (rcv) {{
         \\
     ,
@@ -456,6 +495,18 @@ fn saveType(
 
     var ast = try std.zig.Ast.parse(alloc, try src.toOwnedSliceSentinel(0), .zig);
     defer ast.deinit(alloc);
+    if (ast.errors.len > 0) {
+        for (ast.errors) |err| {
+            var errbuf = std.ArrayList(u8).init(alloc);
+            defer errbuf.deinit();
+            ast.renderError(err, errbuf.writer()) catch {};
+            // TODO print a better error message. maybe try to
+            // show the source which caused the error?
+            std.log.err("formatting {s}: {s}", .{ typename, errbuf.items });
+        }
+        return error.InvalidGeneratedCode;
+    }
+
     const formatted_src = try ast.render(alloc);
     defer alloc.free(formatted_src);
 
@@ -842,19 +893,19 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
             if (mem.endsWith(u8, fname_orig, "_type") and field_base_ty == .UType)
                 continue;
             const fname_off = FmtWithSuffix("_off"){ .name = fname_orig };
-            const fname_camel_upper = camelUpperFmt(fname_orig, imports);
+            const fname_camel_upper = camelUpperFmt(fname_orig, imports).withPrefix("Add");
             if (fb.idl.isScalar(field_base_ty)) {
                 if (field_base_ty != .Union) {
                     if (field.Optional())
                         try writer.print(
-                            \\if (rcv.{2s}) |x| try {0s}.Add{1s}(__builder, x);
+                            \\if (rcv.{2s}) |x| try {0s}.{1s}(__builder, x);
                             \\
                         ,
                             .{ struct_type, fname_camel_upper, fieldNameFmt(fname_orig, imports) },
                         )
                     else
                         try writer.print(
-                            "try {s}.Add{s}(__builder, rcv.{s});\n",
+                            "try {s}.{s}(__builder, rcv.{s});\n",
                             .{ struct_type, fname_camel_upper, fieldNameFmt(fname_orig, imports) },
                         );
                 }
@@ -866,14 +917,14 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                     );
                 } else if (field_base_ty == .Union) {
                     try writer.print(
-                        \\try {0s}.Add{1s}Type(__builder, rcv.{2s});
+                        \\try {0s}.{1s}Type(__builder, rcv.{2s});
                         \\
                     ,
                         .{ struct_type, fname_camel_upper, fieldNameFmt(fname_orig, imports) },
                     );
                 }
                 try writer.print(
-                    "try {s}.Add{s}(__builder, {s});\n",
+                    "try {s}.{s}(__builder, {s});\n",
                     .{ struct_type, fname_camel_upper, fname_off },
                 );
             }
@@ -950,25 +1001,25 @@ fn genNativeTableUnpack(
                 const ele = field_ty.Element();
                 if (ele == .Obj)
                     try writer.print(
-                        \\const {3} = rcv.{1s}Len();
+                        \\const {3} = rcv.{1s}();
                         \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
                         \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
                         \\while (j < {3}) : (j += 1) {{
-                        \\const x = rcv.{1}(j).?;
+                        \\const x = rcv.{4}(j).?;
                         \\
-                    , .{ fname, fname_upper_camel, fty_fmt, fname_len })
+                    , .{ fname, fname_upper_camel.withSuffix("Len"), fty_fmt, fname_len, fname_upper_camel })
                 else
                     try writer.print(
-                        \\const {3} = rcv.{1s}Len();
+                        \\const {3} = rcv.{1s}();
                         \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
                         \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
                         \\while (j < {3}) : (j += 1) {{
                         \\
-                    , .{ fname, fname_upper_camel, fty_fmt, fname_len });
+                    , .{ fname, fname_upper_camel.withSuffix("Len"), fty_fmt, fname_len });
 
                 try writer.print("t.{s}.items[j] = ", .{fname});
                 const fty_ele = field_ty.Element();
@@ -1000,10 +1051,10 @@ fn genNativeTableUnpack(
             } else if (field_base_ty == .Union) {
                 try writer.print(
                     \\if (rcv.{1}()) |_tab| {{
-                    \\t.{0s} = try {2}T.Unpack(rcv.{1}Type(), _tab, __pack_opts);
+                    \\t.{0s} = try {2}T.Unpack(rcv.{3}(), _tab, __pack_opts);
                     \\}}
                     \\
-                , .{ fname, fname_upper_camel, fty_fmt });
+                , .{ fname, fname_upper_camel, fty_fmt, fname_upper_camel.withSuffix("Type") });
             } else unreachable;
             try writer.writeByte('\n');
         }
@@ -1358,8 +1409,8 @@ fn genTableAccessor(o: Object, writer: anytype) !void {
 fn getVectorLen(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     try writer.print(
-        \\pub fn {s}Len(rcv: {s}) u32 
-    , .{ fname_camel_upper, lastName(o.Name()) });
+        \\pub fn {s}(rcv: {s}) u32 
+    , .{ fname_camel_upper.withSuffix("Len"), lastName(o.Name()) });
     try offsetPrefix(field, writer);
     _ = try writer.write(
         \\return rcv._tab.vectorLen(o);
@@ -2178,8 +2229,8 @@ fn buildFieldOfTable(
     , .{ fname, field_base_ty });
 
     try writer.print(
-        \\pub fn Add{s}(__builder: *Builder, {s}: 
-    , .{ fname_camel_upper, fname });
+        \\pub fn {s}(__builder: *Builder, {s}: 
+    , .{ fname_camel_upper.withPrefix("Add"), fname });
 
     const fty_fmt = TypeFmt.init(field_ty, schema, .keep_ns, imports, .{});
     if (!fb.idl.isScalar(field_base_ty) and !o.IsStruct()) {
@@ -2553,6 +2604,67 @@ fn genStruct(
     );
 }
 
+fn genObjectTest(o: Object, writer: anytype) !void {
+    const lastname = lastName(o.Name());
+
+    try writer.print(
+        \\test {{
+        \\    var obj = {0s}T{{}};
+        \\    var b = Builder.init(std.testing.allocator);
+        \\    defer b.deinitAll();
+        \\    const opts = .{{ .allocator = std.testing.allocator }};
+        \\    const end = try obj.Pack(&b, opts);
+        \\    try b.finish(end);
+        \\    const bytes = try b.finishedBytes();
+        \\    var obj_packed = 
+    , .{lastname});
+
+    if (!o.IsStruct())
+        try writer.print(
+            \\{s}.GetRootAs(bytes, 0);
+            \\
+        , .{lastname})
+    else
+        try writer.print(
+            \\fb.GetRootAs({s}, bytes, 0);
+            \\
+        , .{lastname});
+
+    try writer.print(
+        \\    const obj2 = try obj_packed.Unpack(opts);
+        \\    var b2 = Builder.init(std.testing.allocator);
+        \\    defer b2.deinitAll();
+        \\    const end2 = try obj2.Pack(&b2, opts);
+        \\    try b2.finish(end2);
+        \\    try std.testing.expectEqualStrings(bytes, try b2.finishedBytes());
+        \\}}
+    , .{});
+}
+
+fn genEnumTest(e: Enum, writer: anytype) !void {
+    if (!e.IsUnion()) return;
+    const lastname = lastName(e.Name());
+    try writer.print(
+        \\test {{
+        \\    var obj: {0s}T = .NONE;
+        \\    var b = Builder.init(std.testing.allocator);
+        \\    defer b.deinitAll();
+        \\    const opts = .{{ .allocator = std.testing.allocator }};
+        \\    const end = try obj.Pack(&b, opts);
+        \\    try b.finish(end);
+        \\    const bytes = try b.finishedBytes();
+        \\    var table = fb.Table.init(bytes, 0);
+        \\    const obj2 = try {0s}T.Unpack(.NONE, table, opts);
+        \\    var b2 = Builder.init(std.testing.allocator);
+        \\    defer b2.deinitAll();
+        \\    const end2 = try obj2.Pack(&b2, opts);
+        \\    try b2.finish(end2);
+        \\    try std.testing.expectEqualStrings(bytes, try b2.finishedBytes());
+        \\}}
+        \\
+    , .{lastname});
+}
+
 fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2687,6 +2799,7 @@ pub fn generate(
             try genNativeUnionUnpack(e, schema, &imports, ewriter);
             _ = try ewriter.write("};\n\n");
         }
+        try genEnumTest(e, ewriter);
 
         try imports.put(e.Name(), if (e.IsUnion()) .Union else e.UnderlyingType().?.BaseType());
         try saveType(
@@ -2715,7 +2828,7 @@ pub fn generate(
         const swriter = structcode.writer(alloc);
         imports.clearRetainingCapacity();
         try genStruct(o, schema, opts.@"no-gen-object-api" == 0, &imports, swriter);
-
+        try genObjectTest(o, swriter);
         try imports.put(o.Name(), .Obj);
         try saveType(
             gen_path,

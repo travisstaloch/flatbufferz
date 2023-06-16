@@ -1,0 +1,6 @@
+table Null {}
+table A { x: ubyte; }
+union Type { Null, A  }
+table Field { type: Type; }
+union Empty {}
+table B { empty: Empty; }

@@ -28,6 +28,8 @@ const expectEqualDeep = @import("testing.zig").expectEqualDeep;
 
 test {
     _ = @import("../examples/sample_binary.zig");
+    try std.testing.expectEqualStrings("Foo", fb.codegen.firstName("Foo.Bar"));
+    try std.testing.expectEqualStrings("Foo", fb.codegen.firstName("Foo"));
 }
 
 // build an example Monster. returns (buf,offset)
@@ -894,20 +896,20 @@ fn checkReadBuffer(
         // initialize a Vec3 from Pos()
         const vec = monster.Pos() orelse return testing.expect(false);
 
-        testing.expectApproxEqAbs(@as(f32, 1.0), vec.X(), std.math.f32_epsilon) catch |e| {
+        testing.expectApproxEqAbs(@as(f32, 1.0), vec.X(), std.math.floatEps(f32)) catch |e| {
             std.log.err("Pox.X() != 1.0. i = {}", .{i});
             return e;
         };
-        testing.expectApproxEqAbs(@as(f32, 2.0), vec.Y(), std.math.f32_epsilon) catch |e| {
+        testing.expectApproxEqAbs(@as(f32, 2.0), vec.Y(), std.math.floatEps(f32)) catch |e| {
             std.log.err("Pox.Y() != 2.0. i = {}", .{i});
             return e;
         };
-        testing.expectApproxEqAbs(@as(f32, 3.0), vec.Z(), std.math.f32_epsilon) catch |e| {
+        testing.expectApproxEqAbs(@as(f32, 3.0), vec.Z(), std.math.floatEps(f32)) catch |e| {
             std.log.err("Pox.Z() != 3.0. i = {}", .{i});
             return e;
         };
 
-        testing.expectApproxEqAbs(@as(f64, 3.0), vec.Test1(), std.math.f32_epsilon) catch |e| {
+        testing.expectApproxEqAbs(@as(f64, 3.0), vec.Test1(), std.math.floatEps(f32)) catch |e| {
             std.log.err("Pox.Test1() != 3.0. i = {}", .{i});
             return e;
         };

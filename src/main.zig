@@ -23,7 +23,7 @@ const clap_params = clap.parseParamsComptime(
     \\-o, --output-path <str> Path to write generated content to
     \\-I, --include-dir <str>... Adds an include directory which gets passed on to flatc.
     // \\--gen-onefile           Write all output to a single file.
-    \\--no-gen-object-api     Don't generate an additional object-based API.
+    // \\--no-gen-object-api     Don't generate an additional object-based API.
     //    \\--keep-prefix           Keep original prefix of schema include statements.
     \\<str>...                Files
     \\

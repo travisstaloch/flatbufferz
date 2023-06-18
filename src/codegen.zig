@@ -2502,16 +2502,15 @@ fn genStructMutator(
 fn genStruct(
     o: Object,
     schema: Schema,
-    gen_obj_based_api: bool,
     imports: *TypenameSet,
     writer: anytype,
 ) !void {
     // TODO if (o.generated) return;
 
     try genComment(o, .doc, writer);
-    if (gen_obj_based_api) {
-        try genNativeStruct(o, schema, imports, writer);
-    }
+
+    try genNativeStruct(o, schema, imports, writer);
+
     try beginStruct(o, writer);
 
     if (!o.IsStruct()) {
@@ -2761,6 +2760,7 @@ pub fn generate(
     basename: []const u8,
     opts: anytype,
 ) !void {
+    _ = opts;
     std.log.debug(
         "bfbs_path={s} gen_path={s} basename={s}",
         .{ bfbs_path, gen_path, basename },
@@ -2827,7 +2827,7 @@ pub fn generate(
         defer structcode.deinit(alloc);
         const swriter = structcode.writer(alloc);
         imports.clearRetainingCapacity();
-        try genStruct(o, schema, opts.@"no-gen-object-api" == 0, &imports, swriter);
+        try genStruct(o, schema, &imports, swriter);
         try genObjectTest(o, swriter);
         try imports.put(o.Name(), .Obj);
         try saveType(

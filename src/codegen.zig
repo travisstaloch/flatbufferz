@@ -217,6 +217,13 @@ const TypeFmt = struct {
                 try imports.put(o.Name(), ele);
                 _ = try writer.write(name);
             } else todo("TypeFmt.init() base_ty={} ele={}", .{ base_ty, ele });
+        } else if (base_ty == .Array) {
+            const ele = ty.Element();
+            try writer.print("[{}]", .{ty.FixedLength()});
+            if (fb.idl.isScalar(ele) or ele == .String)
+                _ = try writer.write(zigScalarTypename(ele))
+            else
+                todo("TypeFmt.init() Array with non-scalar element={}", .{ele});
         } else todo("TypeFmt.init() base_ty={}", .{base_ty});
     }
 };

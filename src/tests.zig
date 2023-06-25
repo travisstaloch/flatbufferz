@@ -1197,22 +1197,22 @@ fn checkEnumNamesAndValues() !void {
     {
         const fields = comptime std.meta.fields(Any.Tag);
         try testing.expectEqualStrings("NONE", fields[0].name);
-        try testing.expectEqual(@enumToInt(Any.Tag.NONE), fields[0].value);
+        try testing.expectEqual(@intFromEnum(Any.Tag.NONE), fields[0].value);
         try testing.expectEqualStrings("Monster", fields[1].name);
-        try testing.expectEqual(@enumToInt(Any.Tag.Monster), fields[1].value);
+        try testing.expectEqual(@intFromEnum(Any.Tag.Monster), fields[1].value);
         try testing.expectEqualStrings("TestSimpleTableWithEnum", fields[2].name);
-        try testing.expectEqual(@enumToInt(Any.Tag.TestSimpleTableWithEnum), fields[2].value);
+        try testing.expectEqual(@intFromEnum(Any.Tag.TestSimpleTableWithEnum), fields[2].value);
         try testing.expectEqualStrings("MyGame_Example2_Monster", fields[3].name);
-        try testing.expectEqual(@enumToInt(Any.Tag.MyGame_Example2_Monster), fields[3].value);
+        try testing.expectEqual(@intFromEnum(Any.Tag.MyGame_Example2_Monster), fields[3].value);
     }
     {
         const fields = comptime std.meta.fields(Color);
         try testing.expectEqualStrings("Red", fields[0].name);
-        try testing.expectEqual(@enumToInt(Color.Red), fields[0].value);
+        try testing.expectEqual(@intFromEnum(Color.Red), fields[0].value);
         try testing.expectEqualStrings("Green", fields[1].name);
-        try testing.expectEqual(@enumToInt(Color.Green), fields[1].value);
+        try testing.expectEqual(@intFromEnum(Color.Green), fields[1].value);
         try testing.expectEqualStrings("Blue", fields[2].name);
-        try testing.expectEqual(@enumToInt(Color.Blue), fields[2].value);
+        try testing.expectEqual(@intFromEnum(Color.Blue), fields[2].value);
     }
 }
 

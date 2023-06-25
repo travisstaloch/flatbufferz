@@ -17,12 +17,12 @@ pub fn isUnion(b: BaseType) bool {
 // }
 
 pub fn isScalar(t: BaseType) bool {
-    return @enumToInt(BaseType.UType) <= @enumToInt(t) and
-        @enumToInt(t) <= @enumToInt(BaseType.Double);
+    return @intFromEnum(BaseType.UType) <= @intFromEnum(t) and
+        @intFromEnum(t) <= @intFromEnum(BaseType.Double);
 }
 pub fn isInteger(t: BaseType) bool {
-    return @enumToInt(BaseType.UType) <= @enumToInt(t) and
-        @enumToInt(t) <= @enumToInt(BaseType.ULong);
+    return @intFromEnum(BaseType.UType) <= @intFromEnum(t) and
+        @intFromEnum(t) <= @intFromEnum(BaseType.ULong);
 }
 pub fn isFloat(t: BaseType) bool {
     return t == .Float or t == .Double;
@@ -34,6 +34,6 @@ pub fn isBool(t: BaseType) bool {
     return t == .Bool;
 }
 pub fn isOneByte(t: BaseType) bool {
-    return @enumToInt(BaseType.UType) <= @enumToInt(t) and
-        @enumToInt(t) <= @enumToInt(BaseType.Uchar);
+    return @intFromEnum(BaseType.UType) <= @intFromEnum(t) and
+        @intFromEnum(t) <= @intFromEnum(BaseType.Uchar);
 }

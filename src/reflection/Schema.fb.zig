@@ -160,7 +160,7 @@ pub const Schema = struct {
         if (o != 0) {
             return rcv._tab.read(reflection.AdvancedFeatures, o + rcv._tab.pos);
         }
-        return @intToEnum(reflection.AdvancedFeatures, 0);
+        return @enumFromInt(reflection.AdvancedFeatures, 0);
     }
 
     pub fn MutateAdvancedFeatures(rcv: Schema, n: reflection.AdvancedFeatures) bool {
@@ -234,7 +234,7 @@ pub const Schema = struct {
         return __builder.startVector(4, num_elems, 1);
     }
     pub fn AddAdvancedFeatures(__builder: *Builder, advanced_features: reflection.AdvancedFeatures) !void {
-        try __builder.prependSlot(reflection.AdvancedFeatures, 6, advanced_features, @intToEnum(reflection.AdvancedFeatures, 0));
+        try __builder.prependSlot(reflection.AdvancedFeatures, 6, advanced_features, @enumFromInt(reflection.AdvancedFeatures, 0));
     }
 
     pub fn AddFbsFiles(__builder: *Builder, fbs_files: u32) !void {

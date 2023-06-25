@@ -571,7 +571,7 @@ fn commonNsPrefixLen(a: []const u8, b: []const u8) usize {
     while (mnext) |it| : (pos += it.len) {
         if (!mem.eql(u8, it, b[pos..][0..it.len])) return pos;
         mnext = iter.next();
-        pos += @boolToInt(mnext != null); // don't advance pos past the end of a
+        pos += @intFromBool(mnext != null); // don't advance pos past the end of a
     }
     return pos;
 }
@@ -1294,7 +1294,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
             if (field_base_ty == .Obj)
                 _ = try writer.write(" = null")
             else if (field_base_ty == .Union) {
-                try writer.print(" = @intToEnum({}.Tag , 0)", .{fty_fmt});
+                try writer.print(" = @enumFromInt({}.Tag , 0)", .{fty_fmt});
             } else if (field_base_ty == .String) {
                 _ = try writer.write(" = \"\"");
             } else {
@@ -1305,7 +1305,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                 else { // this is an enum type. use DefaultInteger() if non-zero
                     if (field.DefaultInteger() != 0)
                         try writer.print(
-                            "@intToEnum({}, {})",
+                            "@enumFromInt({}, {})",
                             .{ fty_fmt, field.DefaultInteger() },
                         )
                     else {
@@ -1318,7 +1318,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                             _ = try writer.write("null")
                         else if (enum_ty.Values(0)) |ev|
                             try writer.print(
-                                "@intToEnum({}, {})",
+                                "@enumFromInt({}, {})",
                                 .{ fty_fmt, ev.Value() },
                             )
                         else
@@ -1559,20 +1559,20 @@ fn genConstant(
             if (field_ty.Index() == -1)
                 try writer.print("{}", .{field.DefaultInteger()})
             else if (field_base_ty == .UType) {
-                try writer.print("@intToEnum({}.Tag, {})", .{
+                try writer.print("@enumFromInt({}.Tag, {})", .{
                     fty_fmt,
                     field.DefaultInteger(),
                 });
             } else if (fb.idl.isInteger(field_base_ty)) {
                 if (field.DefaultInteger() != 0)
-                    try writer.print("@intToEnum({}, {})", .{
+                    try writer.print("@enumFromInt({}, {})", .{
                         fty_fmt,
                         field.DefaultInteger(),
                     })
                 else {
                     const enum_ty = schema.Enums(@bitCast(u32, field_ty.Index())).?;
                     const ev = enum_ty.Values(0).?;
-                    try writer.print("@intToEnum({}, {})", .{
+                    try writer.print("@enumFromInt({}, {})", .{
                         fty_fmt,
                         ev.Value(),
                     });
@@ -2003,7 +2003,7 @@ fn getUnionField(
 fn inlineSize(ty: Type, _: Schema) u32 {
     const base_ty = ty.BaseType();
     return switch (base_ty) {
-        .Vector => if (scalar_sizes[@bitCast(u8, @enumToInt(ty.Element()))]) |scalar_size|
+        .Vector => if (scalar_sizes[@bitCast(u8, @intFromEnum(ty.Element()))]) |scalar_size|
             scalar_size
         else switch (ty.Element()) {
             .Obj => blk: {
@@ -2285,7 +2285,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *Typenam
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
     const alignment = if (fb.idl.isScalar(ele) or ele == .String)
-        scalar_sizes[@bitCast(u8, @enumToInt(ele))].?
+        scalar_sizes[@bitCast(u8, @intFromEnum(ele))].?
     else switch (ele) {
         .Obj => blk: {
             const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;

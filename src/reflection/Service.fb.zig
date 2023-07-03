@@ -50,8 +50,8 @@ pub const Service = struct {
     }
 
     pub fn KeyCompare(o1: u32, o2: u32, buf: []u8) bool {
-        const obj1 = Service.init(buf, @intCast(u32, buf.len) - o1);
-        const obj2 = Service.init(buf, @intCast(u32, buf.len) - o2);
+        const obj1 = Service.init(buf, @as(u32, @intCast(buf.len)) - o1);
+        const obj2 = Service.init(buf, @as(u32, @intCast(buf.len)) - o2);
         return std.mem.lessThan(u8, obj1.Name(), obj2.Name());
     }
 
@@ -81,7 +81,7 @@ pub const Service = struct {
         const o = rcv._tab.offset(6);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.RPCCall.init(rcv._tab.bytes, x);
         }
@@ -109,7 +109,7 @@ pub const Service = struct {
         const o = rcv._tab.offset(8);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.KeyValue.init(rcv._tab.bytes, x);
         }
@@ -137,7 +137,7 @@ pub const Service = struct {
         const o = rcv._tab.offset(10);
         if (o != 0) {
             const a = rcv._tab.vector(o);
-            return rcv._tab.byteVector(a + @intCast(u32, j) * 4);
+            return rcv._tab.byteVector(a + @as(u32, @intCast(j)) * 4);
         }
         return "";
     }

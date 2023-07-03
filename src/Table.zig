@@ -33,7 +33,7 @@ pub fn init(bytes: []u8, pos: u32) Table {
 ///
 /// Fields which are deprecated are ignored by checking against the vtable's length.
 pub fn offset(t: Table, vtable_offset: u16) u16 {
-    const vtable = @bitCast(u32, @bitCast(i32, t.pos) - t.read(i32, t.pos));
+    const vtable: u32 = @bitCast(@as(i32, @bitCast(t.pos)) - t.read(i32, t.pos));
     if (vtable_offset < t.read(u16, vtable)) {
         return t.read(u16, vtable + vtable_offset);
     }
@@ -132,5 +132,5 @@ pub fn getSlot(t: Table, comptime T: type, slot: u16, d: T) T {
 pub fn getSlotOff(t: Table, comptime T: type, slot: u16, d: T) T {
     const off = t.offset(slot);
     if (off == 0) return d;
-    return @intCast(T, off);
+    return @as(T, @intCast(off));
 }

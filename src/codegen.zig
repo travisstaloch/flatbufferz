@@ -179,7 +179,7 @@ const TypeFmt = struct {
         const imports = tnf.imports;
         const base_ty = ty.BaseType();
         if ((fb.idl.isScalar(base_ty) and ty.Index() != -1) or base_ty == .Union) {
-            const e = schema.Enums(@intCast(u32, ty.Index())).?;
+            const e = schema.Enums(@as(u32, @bitCast(ty.Index()))).?;
             const name = switch (mode) {
                 .keep_ns => e.Name(),
                 .skip_ns => lastName(e.Name()),
@@ -193,7 +193,7 @@ const TypeFmt = struct {
                 try writer.writeByte('?');
             _ = try writer.write(zigScalarTypename(base_ty));
         } else if (fb.idl.isStruct(base_ty)) {
-            const o = schema.Objects(@intCast(u32, ty.Index())).?;
+            const o = schema.Objects(@intCast(ty.Index())).?;
             const name = switch (mode) {
                 .keep_ns => o.Name(),
                 .skip_ns => lastName(o.Name()),
@@ -209,7 +209,7 @@ const TypeFmt = struct {
             if (fb.idl.isScalar(ele) or ele == .String)
                 _ = try writer.write(zigScalarTypename(ele))
             else if (fb.idl.isStruct(ele)) {
-                const o = schema.Objects(@intCast(u32, ty.Index())).?;
+                const o = schema.Objects(@intCast(ty.Index())).?;
                 const name = switch (mode) {
                     .keep_ns => o.Name(),
                     .skip_ns => lastName(o.Name()),
@@ -265,7 +265,7 @@ fn unionMember(_: Enum, ev: EnumVal, schema: Schema, writer: anytype) !void {
     try writer.print("  {s}: ", .{ev.Name()});
     const idx = ev.UnionType().?.Index();
     if (idx == -1) common.panicf("TODO ev.Name()={s}", .{ev.Name()});
-    const e = schema.Objects(@bitCast(u32, idx)).?;
+    const e = schema.Objects(@as(u32, @bitCast(idx))).?;
     try writer.print("{s},\n", .{e.Name()});
 }
 
@@ -754,7 +754,7 @@ fn hasAttribute(x: anytype, key: []const u8) bool {
 }
 
 fn isStruct(object_index: i32, schema: Schema) bool {
-    const o = schema.Objects(@bitCast(u32, object_index)).?;
+    const o = schema.Objects(@as(u32, @bitCast(object_index))).?;
     return o.IsStruct();
 }
 
@@ -1113,7 +1113,7 @@ fn structPackArgs(
         const field = o.Fields(getFieldIdxById(o, i).?).?;
         const field_ty = field.Type().?;
         if (field_ty.BaseType() == .Obj) {
-            const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
             const len = nameprefix.len;
             defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
@@ -1313,7 +1313,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                         //   if field optional: null // FIXME: not sure this is correct
                         //   else: use first declared enum value
                         //   else: undefined
-                        const enum_ty = schema.Enums(@bitCast(u32, field_ty_idx)).?;
+                        const enum_ty = schema.Enums(@as(u32, @bitCast(field_ty_idx))).?;
                         if (field.Optional())
                             _ = try writer.write("null")
                         else if (enum_ty.Values(0)) |ev|
@@ -1570,7 +1570,7 @@ fn genConstant(
                         field.DefaultInteger(),
                     })
                 else {
-                    const enum_ty = schema.Enums(@bitCast(u32, field_ty.Index())).?;
+                    const enum_ty = schema.Enums(@as(u32, @bitCast(field_ty.Index()))).?;
                     const ev = enum_ty.Values(0).?;
                     try writer.print("@enumFromInt({}, {})", .{
                         fty_fmt,
@@ -1606,7 +1606,7 @@ fn structBuilderArgs(
             // Generate arguments for a struct inside a struct. To ensure names
             // don't clash, and to make it obvious these arguments are constructing
             // a nested struct, prefix the name with the field name.
-            const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
             const len = nameprefix.len;
             defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
@@ -1693,9 +1693,9 @@ fn structBuilderBody(
         \\
     , .{ o.Minalign(), o.Bytesize() });
 
-    var i = @intCast(i32, o.FieldsLen()) - 1;
+    var i = @as(i32, @intCast(o.FieldsLen())) - 1;
     while (i >= 0) : (i -= 1) {
-        const field = o.Fields(getFieldIdxById(o, @intCast(u32, i)).?).?;
+        const field = o.Fields(getFieldIdxById(o, @intCast(i)).?).?;
         const padding = field.Padding();
         if (debug) try writer.print(
             \\// {s}.{s}: padding={} id={}
@@ -1709,7 +1709,7 @@ fn structBuilderBody(
         const field_ty = field.Type().?;
         const field_base_ty = field_ty.BaseType();
         if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema)) {
-            const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
             const len = nameprefix.len;
             defer nameprefix.len = len;
             try nameprefix.appendSlice(field.Name());
@@ -2003,11 +2003,11 @@ fn getUnionField(
 fn inlineSize(ty: Type, _: Schema) u32 {
     const base_ty = ty.BaseType();
     return switch (base_ty) {
-        .Vector => if (scalar_sizes[@bitCast(u8, @intFromEnum(ty.Element()))]) |scalar_size|
+        .Vector => if (scalar_sizes[@as(u8, @bitCast(@intFromEnum(ty.Element())))]) |scalar_size|
             scalar_size
         else switch (ty.Element()) {
             .Obj => blk: {
-                break :blk @bitCast(u32, ty.ElementSize());
+                break :blk @bitCast(ty.ElementSize());
             },
             .Vector => unreachable,
             .Union => unreachable,
@@ -2031,7 +2031,7 @@ fn getMemberOfVectorOfStruct(
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const oname = o.Name();
-    const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+    const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
     try writer.print(
         \\pub fn {s}(rcv: {s}, j: usize) ?{s} 
     , .{ fname_camel_upper, lastName(oname), o2.Name() });
@@ -2285,15 +2285,15 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *Typenam
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
     const alignment = if (fb.idl.isScalar(ele) or ele == .String)
-        scalar_sizes[@bitCast(u8, @intFromEnum(ele))].?
+        scalar_sizes[@as(u8, @bitCast(@intFromEnum(ele)))].?
     else switch (ele) {
         .Obj => blk: {
-            const o2 = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+            const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
             const minalign = o2.Minalign();
             break :blk if (minalign == -1)
                 todo("alignment .Obj minalign == -1 ", .{})
             else
-                @bitCast(u32, minalign);
+                @as(u32, @bitCast(minalign));
         },
         .None,
         .Vector,
@@ -2361,7 +2361,7 @@ fn genStructAccessor(
                     try getMemberOfVectorOfStruct(o, field, schema, imports, writer);
                     // TODO(michaeltle): Support querying fixed struct by key.
                     // Currently, we only support keyed tables.
-                    const struct_def = schema.Objects(@bitCast(u32, field_ty.Index())).?;
+                    const struct_def = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
                     if (!struct_def.IsStruct()) {
                         const mkey_field = blk: {
                             var i: u32 = 0;

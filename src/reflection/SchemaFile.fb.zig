@@ -50,8 +50,8 @@ pub const SchemaFile = struct {
     }
 
     pub fn KeyCompare(o1: u32, o2: u32, buf: []u8) bool {
-        const obj1 = SchemaFile.init(buf, @intCast(u32, buf.len) - o1);
-        const obj2 = SchemaFile.init(buf, @intCast(u32, buf.len) - o2);
+        const obj1 = SchemaFile.init(buf, @as(u32, @intCast(buf.len)) - o1);
+        const obj2 = SchemaFile.init(buf, @as(u32, @intCast(buf.len)) - o2);
         return std.mem.lessThan(u8, obj1.Filename(), obj2.Filename());
     }
 
@@ -82,7 +82,7 @@ pub const SchemaFile = struct {
         const o = rcv._tab.offset(6);
         if (o != 0) {
             const a = rcv._tab.vector(o);
-            return rcv._tab.byteVector(a + @intCast(u32, j) * 4);
+            return rcv._tab.byteVector(a + @as(u32, @intCast(j)) * 4);
         }
         return "";
     }

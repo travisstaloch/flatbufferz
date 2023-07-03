@@ -41,7 +41,7 @@ pub fn main() !void {
     const name = try builder.createString("Orc");
 
     _ = try Monster.StartInventoryVector(&builder, 10);
-    for (0..10) |i| try builder.prepend(u8, @intCast(u8, 9 - i));
+    for (0..10) |i| try builder.prepend(u8, @as(u8, @intCast(9 - i)));
     const inv = try builder.endVector(10);
     _ = try Monster.StartWeaponsVector(&builder, 2);
     // Note: Since we prepend the weapons, prepend in reverse order.
@@ -85,7 +85,7 @@ pub fn main() !void {
     // to query the length of the vector. You can index the vector by passing an index value
     // into the accessor.
     for (0..monster.InventoryLen()) |i|
-        try testing.expectEqual(@intCast(u8, i), monster.Inventory(i).?);
+        try testing.expectEqual(@as(u8, @intCast(i)), monster.Inventory(i).?);
 
     const expected_weapon_names = [_][]const u8{ "Sword", "Axe" };
     const expected_weapon_damages = [_]i16{ 3, 5 };

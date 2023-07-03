@@ -25,5 +25,5 @@ pub fn ptrAlign(comptime Ptr: type) comptime_int {
 }
 
 pub fn ptrAlignCast(comptime Ptr: type, ptr: anytype) Ptr {
-    return @ptrCast(Ptr, @alignCast(ptrAlign(Ptr), ptr));
+    return @ptrCast(@alignCast(ptr));
 }

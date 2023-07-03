@@ -168,8 +168,8 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         defer start.deinit();
         try check(start.items, b, &i);
         for (1..12) |j| {
-            try b.prepend(u8, @intCast(u8, j));
-            try start.insert(0, @intCast(u8, j));
+            try b.prepend(u8, @as(u8, @intCast(j)));
+            try start.insert(0, @intCast(j));
             try check(start.items, b, &i);
         }
         _ = try b.endVector(8);
@@ -609,7 +609,7 @@ fn calcVOffsetT(slot: u16) u16 {
 }
 
 fn calcUOffsetT(vtableOffset: u16, t: fb.Table) u16 {
-    return @intCast(u16, t.pos) + t.offset(vtableOffset);
+    return @as(u16, @intCast(t.pos)) + t.offset(vtableOffset);
 }
 
 /// check all mutate methods one by one
@@ -639,13 +639,13 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
 
     try b.prependSOff(14);
     b.slot(14);
-    const soVal = @intCast(i32, b.offset() - 14);
+    const soVal: i32 = @intCast(b.offset() - 14);
 
     const offset = try b.endObject();
 
     var t = fb.Table{
         .bytes = b.bytes.items,
-        .pos = @intCast(u32, b.bytes.items.len) - offset,
+        .pos = @as(u32, @intCast(b.bytes.items.len)) - offset,
     };
 
     const testForOriginalValues = struct {
@@ -1169,9 +1169,9 @@ fn checkVtableDeduplication(alloc: mem.Allocator) !void {
 
     try testing.expectEqualSlices(u8, &want, got);
 
-    const table0 = fb.Table{ .bytes = b.bytes.items, .pos = @intCast(u32, b.bytes.items.len) - obj0 };
-    const table1 = fb.Table{ .bytes = b.bytes.items, .pos = @intCast(u32, b.bytes.items.len) - obj1 };
-    const table2 = fb.Table{ .bytes = b.bytes.items, .pos = @intCast(u32, b.bytes.items.len) - obj2 };
+    const table0 = fb.Table{ .bytes = b.bytes.items, .pos = @as(u32, @intCast(b.bytes.items.len)) - obj0 };
+    const table1 = fb.Table{ .bytes = b.bytes.items, .pos = @as(u32, @intCast(b.bytes.items.len)) - obj1 };
+    const table2 = fb.Table{ .bytes = b.bytes.items, .pos = @as(u32, @intCast(b.bytes.items.len)) - obj2 };
 
     const testTable = struct {
         fn func(tab: fb.Table, a: u16, b_: u8, c: u8, d: u8) !void {
@@ -1224,12 +1224,12 @@ fn checkCreateByteVector(alloc: mem.Allocator) !void {
         defer b1.deinitAll();
         var b2 = Builder.init(alloc);
         defer b2.deinitAll();
-        _ = try b1.startVector(1, @intCast(i32, size), 1);
-        var i = @intCast(isize, size) - 1;
+        _ = try b1.startVector(1, @as(i32, @intCast(size)), 1);
+        var i = @as(isize, @intCast(size)) - 1;
         while (i >= 0) : (i -= 1)
-            try b1.prepend(u8, raw[@bitCast(usize, i)]);
+            try b1.prepend(u8, raw[@as(usize, @bitCast(i))]);
 
-        _ = try b1.endVector(@intCast(u32, size));
+        _ = try b1.endVector(@as(u32, @intCast(size)));
         _ = try b2.createByteVector(raw[0..size]);
         try testing.expectEqualStrings(b1.bytes.items, b2.bytes.items);
     }
@@ -1634,7 +1634,8 @@ const LCG = struct {
     }
 
     pub fn next(lcg: *LCG) u32 {
-        const n = @truncate(u32, @as(u64, lcg.val) * @truncate(u32, @as(u64, 279470273) % @as(u64, 4294967291)));
+        const x: u32 = @truncate(@as(u64, 279470273) % @as(u64, 4294967291));
+        const n: u32 = @truncate(@as(u64, lcg.val) * x);
         lcg.val = n;
         return n;
     }
@@ -1673,7 +1674,7 @@ fn checkFuzz(alloc: mem.Allocator, fuzzFields: u32, fuzzObjects: u32) !void {
         try builder.startObject(fuzzFields);
 
         for (0..fuzzFields) |f_| {
-            const f = @intCast(u32, f_);
+            const f: u32 = @intCast(f_);
             const choice = l.next() % testValuesMax;
             try switch (choice) {
                 0 => builder.prependSlot(bool, f, boolVal, false),
@@ -1719,11 +1720,11 @@ fn checkFuzz(alloc: mem.Allocator, fuzzFields: u32, fuzzObjects: u32) !void {
     for (0..fuzzObjects) |i| {
         const table = fb.Table{
             .bytes = builder.bytes.items,
-            .pos = @intCast(u32, builder.bytes.items.len) - objects[i],
+            .pos = @as(u32, @intCast(builder.bytes.items.len)) - objects[i],
         };
 
         for (0..fuzzFields) |j| {
-            const f = @intCast(u16, (fb.encode.vtable_metadata_fields + j) * fb.Builder.size_u16);
+            const f: u16 = @intCast((fb.encode.vtable_metadata_fields + j) * fb.Builder.size_u16);
             const choice = l.next() % testValuesMax;
 
             switch (choice) {

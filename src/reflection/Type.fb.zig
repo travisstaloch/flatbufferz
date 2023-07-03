@@ -43,7 +43,7 @@ pub const Type = struct {
         if (o != 0) {
             return rcv._tab.read(reflection.BaseType, o + rcv._tab.pos);
         }
-        return @enumFromInt(reflection.BaseType, 0);
+        return @enumFromInt(0);
     }
 
     pub fn MutateBaseType(rcv: Type, n: reflection.BaseType) bool {
@@ -55,7 +55,7 @@ pub const Type = struct {
         if (o != 0) {
             return rcv._tab.read(reflection.BaseType, o + rcv._tab.pos);
         }
-        return @enumFromInt(reflection.BaseType, 0);
+        return @enumFromInt(0);
     }
 
     pub fn MutateElement(rcv: Type, n: reflection.BaseType) bool {
@@ -116,11 +116,11 @@ pub const Type = struct {
         try __builder.startObject(6);
     }
     pub fn AddBaseType(__builder: *Builder, base_type: reflection.BaseType) !void {
-        try __builder.prependSlot(reflection.BaseType, 0, base_type, @enumFromInt(reflection.BaseType, 0));
+        try __builder.prependSlot(reflection.BaseType, 0, base_type, @enumFromInt(0));
     }
 
     pub fn AddElement(__builder: *Builder, element: reflection.BaseType) !void {
-        try __builder.prependSlot(reflection.BaseType, 1, element, @enumFromInt(reflection.BaseType, 0));
+        try __builder.prependSlot(reflection.BaseType, 1, element, @enumFromInt(0));
     }
 
     pub fn AddIndex(__builder: *Builder, index: i32) !void {

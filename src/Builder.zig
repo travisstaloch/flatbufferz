@@ -103,7 +103,7 @@ pub fn reset(b: *Builder) void {
     b.vtables.items.len = 0;
     b.vtable.items.len = 0;
     b.shared_strings.clearRetainingCapacity();
-    b.head = @intCast(u32, b.bytes.items.len);
+    b.head = @intCast(b.bytes.items.len);
     b.minalign = 1;
     b.nested = false;
     b.finished = false;
@@ -155,9 +155,9 @@ pub fn writeVtable(b: *Builder) !u32 {
 
     // Trim vtable of trailing zeroes.
     {
-        var i = @bitCast(isize, b.vtable.items.len) - 1;
-        while (i >= 0 and b.vtable.items[@bitCast(usize, i)] == 0) : (i -= 1) {}
-        b.vtable.items.len = @bitCast(usize, i + 1);
+        var i = @as(isize, @bitCast(b.vtable.items.len)) - 1;
+        while (i >= 0 and b.vtable.items[@as(usize, @bitCast(i))] == 0) : (i -= 1) {}
+        b.vtable.items.len = @as(usize, @bitCast(i + 1));
     }
     // Search backwards through existing vtables, because similar vtables
     // are likely to have been recently appended. See
@@ -165,10 +165,10 @@ pub fn writeVtable(b: *Builder) !u32 {
     // saves about 30% of the time used in writing objects with duplicate
     // tables.
     {
-        var i = @bitCast(isize, b.vtables.items.len) - 1;
+        var i = @as(isize, @bitCast(b.vtables.items.len)) - 1;
         while (i >= 0) : (i -= 1) {
             // Find the other vtable, which is associated with `i`:
-            const vt2_offset = b.vtables.items[@bitCast(usize, i)];
+            const vt2_offset = b.vtables.items[@bitCast(i)];
             const vt2_start = b.bytes.items.len - vt2_offset;
             const vt2_len = read(u16, b.bytes.items[vt2_start..]);
 
@@ -191,34 +191,34 @@ pub fn writeVtable(b: *Builder) !u32 {
         // Write out the current vtable in reverse , because
         // serialization occurs in last-first order:
         {
-            var i = @bitCast(isize, b.vtable.items.len) - 1;
+            var i = @as(isize, @bitCast(b.vtable.items.len)) - 1;
             while (i >= 0) : (i -= 1) {
                 var off: u32 = 0;
-                const ii = @bitCast(usize, i);
+                const ii: usize = @bitCast(i);
                 if (b.vtable.items[ii] != 0) {
                     // Forward reference to field;
                     // use 32bit number to assert no overflow:
                     off = object_offset - b.vtable.items[ii];
                 }
 
-                try b.prepend(u16, @intCast(u16, off));
+                try b.prepend(u16, @as(u16, @intCast(off)));
             }
         }
         // The two metadata fields are written last.
 
         // First, store the object bytesize:
         const object_size = object_offset - b.object_end;
-        try b.prepend(u16, @intCast(u16, object_size));
+        try b.prepend(u16, @as(u16, @intCast(object_size)));
 
         // Second, store the vtable bytesize:
         const v_bytes = (b.vtable.items.len + vtable_metadata_fields) * size_u16;
-        try b.prepend(u16, @intCast(u16, v_bytes));
+        try b.prepend(u16, @as(u16, @intCast(v_bytes)));
 
         // Next, write the offset to the new vtable in the
         // already-allocated soff at the beginning of this object:
         const object_start = b.bytes.items.len - object_offset;
-        write(i32, b.bytes.items[object_start..], @intCast(i32, b.offset() -
-            object_offset));
+        write(i32, b.bytes.items[object_start..], @as(i32, @intCast(b.offset() -
+            object_offset)));
 
         // Finally, store this vtable in memory for future
         // deduplication:
@@ -226,13 +226,13 @@ pub fn writeVtable(b: *Builder) !u32 {
     } else {
         // Found a duplicate vtable.
 
-        const object_start = @intCast(u32, b.bytes.items.len) - object_offset;
+        const object_start = @as(u32, @intCast(b.bytes.items.len)) - object_offset;
         b.head = object_start;
 
         // Write the offset to the found vtable in the
         // already-allocated soff at the beginning of this object:
-        write(i32, b.bytes.items[b.head..], @bitCast(i32, existing_vtable) -
-            @bitCast(i32, object_offset));
+        write(i32, b.bytes.items[b.head..], @as(i32, @bitCast(existing_vtable)) -
+            @as(i32, @bitCast(object_offset)));
     }
 
     b.vtable.items.len = 0;
@@ -282,7 +282,7 @@ pub fn growByteBuffer(b: *Builder) !void {
 
 /// returns offset relative to the end of the buffer.
 pub fn offset(b: *Builder) u32 {
-    return @intCast(u32, b.bytes.items.len) - b.head;
+    return @as(u32, @intCast(b.bytes.items.len)) - b.head;
 }
 
 /// places zeros at the current offset
@@ -297,11 +297,11 @@ pub fn pad(b: *Builder, n: u32) void {
 /// If all you need to do is align, `additional_bytes` will be 0.
 pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
     // Track the biggest thing we've ever aligned to.
-    if (size > b.minalign) b.minalign = @bitCast(u32, size);
+    if (size > b.minalign) b.minalign = @bitCast(size);
 
     // Find the amount of alignment needed such that `size` is properly
     // aligned after `additional_bytes`:
-    var align_size = (~(@bitCast(i64, b.bytes.items.len) - @bitCast(i32, b.head) + additional_bytes) + 1);
+    var align_size = (~(@as(i64, @bitCast(b.bytes.items.len)) - @as(i32, @bitCast(b.head)) + additional_bytes) + 1);
     align_size &= size - 1;
 
     b.debug("prep() 1 b.head={} align_size={} additional_bytes={} size={}", .{ b.head, align_size, additional_bytes, size });
@@ -309,9 +309,9 @@ pub fn prep(b: *Builder, size: i32, additional_bytes: i32) !void {
     while (b.head <= align_size + size + additional_bytes) {
         const old_buf_size = b.bytes.items.len;
         try b.growByteBuffer();
-        b.head += @intCast(u32, b.bytes.items.len - old_buf_size);
+        b.head += @intCast(b.bytes.items.len - old_buf_size);
     }
-    b.pad(@intCast(u32, align_size));
+    b.pad(@intCast(align_size));
     b.debug("prep() b.head={} bytes.len={}", .{ b.head, b.bytes.items.len });
 }
 
@@ -321,7 +321,7 @@ pub fn prependSOff(b: *Builder, off: i32) !void {
     if (off > b.offset())
         return err("unreachable: off > b.offset()", .{}, error.InvalidOffset);
 
-    const off2 = @bitCast(i32, b.offset()) - off + size_i32;
+    const off2 = @as(i32, @bitCast(b.offset())) - off + size_i32;
     b.place(i32, off2);
 }
 
@@ -363,12 +363,12 @@ pub fn endVector(b: *Builder, vector_num_elems: u32) !u32 {
 /// serializes slice of table offsets into a vector.
 pub fn createVectorOfTables(b: *Builder, offsets: []const u32) !u32 {
     try b.checkNotNested();
-    _ = try b.startVector(4, @intCast(i32, offsets.len), 4);
-    var i = @bitCast(isize, offsets.len) - 1;
+    _ = try b.startVector(4, @intCast(offsets.len), 4);
+    var i = @as(isize, @bitCast(offsets.len)) - 1;
     while (i >= 0) : (i -= 1)
-        _ = try b.prependUOff(offsets[@bitCast(usize, i)]);
+        _ = try b.prependUOff(offsets[@bitCast(i)]);
 
-    return b.endVector(@intCast(u32, offsets.len));
+    return b.endVector(@intCast(offsets.len));
 }
 
 const KeyCompare = fn (u32, u32, []u8) bool;
@@ -402,15 +402,15 @@ pub fn createString(b: *Builder, s: []const u8) !u32 {
     try b.checkNotNested();
     b.nested = true;
     b.debug("createString() '{s}'", .{s});
-    try b.prep(size_u32, @intCast(i32, s.len + 1) * size_byte);
+    try b.prep(size_u32, @as(i32, @intCast(s.len + 1)) * size_byte);
     b.place(u8, 0);
 
-    const l = @intCast(u32, s.len);
+    const l: u32 = @intCast(s.len);
 
     b.head -= l;
     std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
 
-    return b.endVector(@intCast(u32, s.len));
+    return b.endVector(@intCast(s.len));
 }
 
 /// writes a byte slice as a []const u8 (null-terminated).
@@ -418,15 +418,15 @@ pub fn createByteString(b: *Builder, s: []const u8) !u32 {
     try b.checkNotNested();
     b.nested = true;
 
-    try b.prep(size_u32, (@intCast(i32, s.len) + 1) * size_byte);
+    try b.prep(size_u32, (@as(i32, @intCast(s.len)) + 1) * size_byte);
     b.place(u8, 0);
 
-    const l = @intCast(u32, s.len);
+    const l: u32 = @intCast(s.len);
 
     b.head -= l;
     std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
 
-    return b.endVector(@intCast(u32, s.len));
+    return b.endVector(@intCast(s.len));
 }
 
 /// write a byte vector
@@ -434,14 +434,14 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     try b.checkNotNested();
     b.nested = true;
 
-    try b.prep(size_u32, @intCast(i32, v.len * size_byte));
+    try b.prep(size_u32, @intCast(v.len * size_byte));
 
-    const l = @intCast(u32, v.len);
+    const l: u32 = @intCast(v.len);
 
     b.head -= l;
     std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], v);
 
-    return b.endVector(@intCast(u32, v.len));
+    return b.endVector(@intCast(v.len));
 }
 
 fn checkNested(b: *Builder) !void {
@@ -531,11 +531,11 @@ pub fn slot(b: *Builder, slotnum: u32) void {
 pub fn finishWithFileIdentifier(b: *Builder, rootTable: u32, fid: Fid) !void {
     // In order to add a file identifier to the flatbuffer message, we need
     // to prepare an alignment and file identifier length
-    try b.prep(@bitCast(i32, b.minalign), size_i32 + file_identifier_len);
+    try b.prep(@bitCast(b.minalign), size_i32 + file_identifier_len);
     var i = file_identifier_len - 1;
     while (i >= 0) : (i -= 1) {
         // place the file identifier
-        b.place(u8, fid[@bitCast(u32, i)]);
+        b.place(u8, fid[@as(u32, @bitCast(i))]);
     }
     // finish
     return b.finish(rootTable);
@@ -554,11 +554,11 @@ pub fn finishSizePrefixed(b: *Builder, rootTable: u32) !void {
 pub fn finishSizePrefixedWithFileIdentifier(b: *Builder, rootTable: u32, fid: [4]u8) !void {
     // In order to add a file identifier and size prefix to the flatbuffer message,
     // we need to prepare an alignment, a size prefix length, and file identifier length
-    try b.prep(@bitCast(i32, b.minalign), size_i32 + file_identifier_len + size_prefix_length);
+    try b.prep(@bitCast(b.minalign), size_i32 + file_identifier_len + size_prefix_length);
     var i = file_identifier_len - 1;
     while (i >= 0) : (i -= 1) {
         // place the file identifier
-        b.place(u8, fid[@bitCast(u32, i)]);
+        b.place(u8, fid[@as(u32, @bitCast(i))]);
     }
     // finish
     return b.finishPrefixed(rootTable, true);
@@ -575,9 +575,9 @@ pub fn finishPrefixed(b: *Builder, root_table: u32, size_prefix: bool) !void {
     try b.checkNotNested();
 
     if (size_prefix)
-        try b.prep(@bitCast(i32, b.minalign), size_u32 + size_prefix_length)
+        try b.prep(@bitCast(b.minalign), size_u32 + size_prefix_length)
     else
-        try b.prep(@bitCast(i32, b.minalign), size_u32);
+        try b.prep(@bitCast(b.minalign), size_u32);
 
     try b.prependUOff(root_table);
     if (size_prefix) b.place(u32, b.offset());

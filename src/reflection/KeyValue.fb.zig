@@ -46,8 +46,8 @@ pub const KeyValue = struct {
     }
 
     pub fn KeyCompare(o1: u32, o2: u32, buf: []u8) bool {
-        const obj1 = KeyValue.init(buf, @intCast(u32, buf.len) - o1);
-        const obj2 = KeyValue.init(buf, @intCast(u32, buf.len) - o2);
+        const obj1 = KeyValue.init(buf, @as(u32, @intCast(buf.len)) - o1);
+        const obj2 = KeyValue.init(buf, @as(u32, @intCast(buf.len)) - o2);
         return std.mem.lessThan(u8, obj1.Key(), obj2.Key());
     }
 

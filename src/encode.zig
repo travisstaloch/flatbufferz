@@ -49,7 +49,7 @@ pub fn read(comptime T: type, buf: []const u8) T {
                 .signedness = .unsigned,
                 .bits = info.Float.bits,
             } });
-            return @bitCast(T, mem.readIntLittle(I, buf[0..@sizeOf(T)]));
+            return @bitCast(mem.readIntLittle(I, buf[0..@sizeOf(T)]));
         },
         .Bool => return buf[0] != 0,
         .Enum => {
@@ -84,7 +84,7 @@ pub fn write(comptime T: type, buf: []u8, t: T) void {
                 .signedness = .unsigned,
                 .bits = info.Float.bits,
             } });
-            mem.writeIntLittle(I, buf[0..@sizeOf(T)], @bitCast(I, t));
+            mem.writeIntLittle(I, buf[0..@sizeOf(T)], @as(I, @bitCast(t)));
         },
         .Bool => mem.writeIntLittle(u8, buf[0..1], @intFromBool(t)),
         .Enum => {

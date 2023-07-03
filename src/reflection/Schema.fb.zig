@@ -50,7 +50,7 @@ pub const Schema = struct {
         const o = rcv._tab.offset(4);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.Object.init(rcv._tab.bytes, x);
         }
@@ -78,7 +78,7 @@ pub const Schema = struct {
         const o = rcv._tab.offset(6);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.Enum.init(rcv._tab.bytes, x);
         }
@@ -131,7 +131,7 @@ pub const Schema = struct {
         const o = rcv._tab.offset(14);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.Service.init(rcv._tab.bytes, x);
         }
@@ -160,7 +160,7 @@ pub const Schema = struct {
         if (o != 0) {
             return rcv._tab.read(reflection.AdvancedFeatures, o + rcv._tab.pos);
         }
-        return @enumFromInt(reflection.AdvancedFeatures, 0);
+        return @as(reflection.AdvancedFeatures, @enumFromInt(0));
     }
 
     pub fn MutateAdvancedFeatures(rcv: Schema, n: reflection.AdvancedFeatures) bool {
@@ -173,7 +173,7 @@ pub const Schema = struct {
         const o = rcv._tab.offset(18);
         if (o != 0) {
             var x = rcv._tab.vector(o);
-            x += @intCast(u32, j) * 4;
+            x += @as(u32, @intCast(j)) * 4;
             x = rcv._tab.indirect(x);
             return reflection.SchemaFile.init(rcv._tab.bytes, x);
         }
@@ -234,7 +234,7 @@ pub const Schema = struct {
         return __builder.startVector(4, num_elems, 1);
     }
     pub fn AddAdvancedFeatures(__builder: *Builder, advanced_features: reflection.AdvancedFeatures) !void {
-        try __builder.prependSlot(reflection.AdvancedFeatures, 6, advanced_features, @enumFromInt(reflection.AdvancedFeatures, 0));
+        try __builder.prependSlot(reflection.AdvancedFeatures, 6, advanced_features, @as(reflection.AdvancedFeatures, @enumFromInt(0)));
     }
 
     pub fn AddFbsFiles(__builder: *Builder, fbs_files: u32) !void {

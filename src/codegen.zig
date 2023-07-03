@@ -813,14 +813,14 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 try writer.print(
                     \\var {0s}: u32 = 0;
                     \\if (rcv.{1s}.items.len != 0) {{
-                    \\const {2s} = @intCast(i32, rcv.{1s}.items.len);
+                    \\const {2s}: i32 = @intCast(rcv.{1s}.items.len);
                     \\
                 , .{ fname_off, fieldNameFmt(fname_orig, imports), fname_len });
                 const fty_ele = field_ty.Element();
                 if (fty_ele == .String) {
                     try writer.print(
-                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @bitCast(u32, {0s}));
-                        \\__tmp_offsets.items.len = @bitCast(u32, {0s});
+                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({0s})));
+                        \\__tmp_offsets.items.len = @as(u32, @bitCast({0s}));
                         \\for (__tmp_offsets.items, 0..) |*off, j| {{
                         \\off.* = try __builder.createString(rcv.{1s}.items[j]);
                         \\}}
@@ -835,8 +835,8 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                         .{ .is_optional = field.Optional() },
                     );
                     try writer.print(
-                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @bitCast(u32, {0s}));
-                        \\__tmp_offsets.items.len = @bitCast(u32, {0s});
+                        \\try __tmp_offsets.ensureTotalCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({0s})));
+                        \\__tmp_offsets.items.len = @as(u32, @bitCast({0s}));
                         \\for (__tmp_offsets.items, 0..) |*off, j| {{
                         \\off.* = try {2}T.Pack(rcv.{1s}.items[j], __builder, __pack_opts);
                         \\}}
@@ -854,17 +854,17 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
                 , .{ struct_type, fname_camel_upper, fname_len });
                 if (fb.idl.isScalar(fty_ele)) {
                     try writer.print(
-                        "try __builder.prepend({s}, rcv.{s}.items[@bitCast(u32, j)]);\n",
+                        "try __builder.prepend({s}, rcv.{s}.items[@as(u32, @bitCast(j))]);\n",
                         .{ zigScalarTypename(fty_ele), fieldNameFmt(fname_orig, imports) },
                     );
                 } else if (fty_ele == .Obj and isStruct(field_ty.Index(), schema)) {
-                    try writer.print("_ = try rcv.{s}.items[@bitCast(u32, j)].Pack(__builder, __pack_opts);\n", .{fname_orig});
+                    try writer.print("_ = try rcv.{s}.items[@as(u32, @bitCast(j))].Pack(__builder, __pack_opts);\n", .{fname_orig});
                 } else {
-                    try writer.print("try __builder.prependUOff(__tmp_offsets.items[@bitCast(u32, j)]);", .{});
+                    try writer.print("try __builder.prependUOff(__tmp_offsets.items[@as(u32, @bitCast(j))]);", .{});
                 }
                 try writer.print(
                     \\}}
-                    \\{0s} = try __builder.endVector(@bitCast(u32, {1s}));
+                    \\{0s} = try __builder.endVector(@bitCast({1s}));
                     \\}}
                     \\}}
                     \\
@@ -1009,7 +1009,7 @@ fn genNativeTableUnpack(
                 if (ele == .Obj)
                     try writer.print(
                         \\const {3} = rcv.{1s}();
-                        \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
+                        \\t.{0s} = try std.ArrayListUnmanaged({2}T).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3})));
                         \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
@@ -1020,7 +1020,7 @@ fn genNativeTableUnpack(
                 else
                     try writer.print(
                         \\const {3} = rcv.{1s}();
-                        \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity(__pack_opts.allocator.?, @bitCast(u32, {3}));
+                        \\t.{0s} = try std.ArrayListUnmanaged({2}).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3})));
                         \\t.{0s}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
@@ -1294,7 +1294,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
             if (field_base_ty == .Obj)
                 _ = try writer.write(" = null")
             else if (field_base_ty == .Union) {
-                try writer.print(" = @enumFromInt({}.Tag , 0)", .{fty_fmt});
+                try writer.print(" = @as({}.Tag, @enumFromInt(0))", .{fty_fmt});
             } else if (field_base_ty == .String) {
                 _ = try writer.write(" = \"\"");
             } else {
@@ -1305,7 +1305,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                 else { // this is an enum type. use DefaultInteger() if non-zero
                     if (field.DefaultInteger() != 0)
                         try writer.print(
-                            "@enumFromInt({}, {})",
+                            "@as({}, @enumFromInt({}))",
                             .{ fty_fmt, field.DefaultInteger() },
                         )
                     else {
@@ -1318,7 +1318,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
                             _ = try writer.write("null")
                         else if (enum_ty.Values(0)) |ev|
                             try writer.print(
-                                "@enumFromInt({}, {})",
+                                "@as({}, @enumFromInt({}))",
                                 .{ fty_fmt, ev.Value() },
                             )
                         else
@@ -1559,20 +1559,20 @@ fn genConstant(
             if (field_ty.Index() == -1)
                 try writer.print("{}", .{field.DefaultInteger()})
             else if (field_base_ty == .UType) {
-                try writer.print("@enumFromInt({}.Tag, {})", .{
+                try writer.print("@as({}.Tag, @enumFromInt({}))", .{
                     fty_fmt,
                     field.DefaultInteger(),
                 });
             } else if (fb.idl.isInteger(field_base_ty)) {
                 if (field.DefaultInteger() != 0)
-                    try writer.print("@enumFromInt({}, {})", .{
+                    try writer.print("@as({}, @enumFromInt({}))", .{
                         fty_fmt,
                         field.DefaultInteger(),
                     })
                 else {
                     const enum_ty = schema.Enums(@as(u32, @bitCast(field_ty.Index()))).?;
                     const ev = enum_ty.Values(0).?;
-                    try writer.print("@enumFromInt({}, {})", .{
+                    try writer.print("@as({}, @enumFromInt({}))", .{
                         fty_fmt,
                         ev.Value(),
                     });
@@ -2056,7 +2056,7 @@ fn getMemberOfVectorOfStruct(
     });
     try writer.print(
         \\var x = rcv._tab.vector(o);
-        \\x += @intCast(u32, j) * {0};{2s}
+        \\x += @as(u32, @intCast(j)) * {0};{2s}
         \\return {1}.init(rcv._tab.bytes, x);
         \\}}
         \\return null;
@@ -2149,13 +2149,13 @@ fn getMemberOfVectorOfNonStruct(
     if (field_ty.BaseType() == .Vector and field_ty.Element() == .Obj and
         isStruct(field_ty.Index(), schema))
         try writer.print(
-            \\rcv._tab.bytes, a + @intCast(u32, j) * {});
+            \\rcv._tab.bytes, a + @as(u32, @intCast(j)) * {});
             \\}}
             \\
         , .{inlineSize(field_ty, schema)})
     else
         try writer.print(
-            \\a + @intCast(u32, j) * {});
+            \\a + @as(u32, @intCast(j)) * {});
             \\}}
             \\
         , .{inlineSize(field_ty, schema)});
@@ -2474,7 +2474,7 @@ fn mutateElementOfVectorOfNonStruct(
     try offsetPrefix(field, writer);
     try writer.print(
         \\const a = rcv._tab.vector(o);
-        \\return rcv._tab.mutate({0s}, a + @intCast(u32, j) * {1}, n);
+        \\return rcv._tab.mutate({0s}, a + @as(u32, @intCast(j)) * {1}, n);
         \\}}
         \\return false;
         \\}}
@@ -2677,8 +2677,8 @@ fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: anytype
     const base_ty = field_ty.BaseType();
     try writer.print(
         \\pub fn KeyCompare(o1: u32, o2: u32, buf: []u8) bool {{
-        \\const obj1 = {0s}.init(buf, @intCast(u32, buf.len) - o1);
-        \\const obj2 = {0s}.init(buf, @intCast(u32, buf.len) - o2);
+        \\const obj1 = {0s}.init(buf, @as(u32, @intCast(buf.len)) - o1);
+        \\const obj2 = {0s}.init(buf, @as(u32, @intCast(buf.len)) - o2);
         \\
     , .{lastName(o.Name())});
 

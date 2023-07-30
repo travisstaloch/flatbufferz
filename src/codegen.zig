@@ -482,12 +482,9 @@ fn saveType(
     _ = .{ needs_imports, kind };
     var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
     const outpath = try typenameToPath(&buf, gen_path, typename, ".fb.zig");
-    std.fs.cwd().makePath(std.fs.path.dirname(outpath).?) catch |e| switch (e) {
-        error.PathAlreadyExists => {},
-        else => {
-            std.log.err("couldn't make dir {?s}", .{std.fs.path.dirname(outpath)});
-            return e;
-        },
+    std.fs.cwd().makePath(std.fs.path.dirname(outpath).?) catch |e| {
+        std.log.err("couldn't make dir {?s}", .{std.fs.path.dirname(outpath)});
+        return e;
     };
 
     // use std.zig.Ast to parse() and render() the generated source so that it

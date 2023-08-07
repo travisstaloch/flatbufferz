@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) !void {
     exe_tests.addOptions("build_options", build_options);
     exe_tests.addModule("flatbufferz", lib_mod);
     exe_tests.addModule("generated", gen_mod);
-    exe_tests.main_pkg_path = ".";
+    exe_tests.main_pkg_path = .{ .path = "." };
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");

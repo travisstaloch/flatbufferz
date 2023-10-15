@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) !void {
     exe_tests.addOptions("build_options", build_options);
     exe_tests.addModule("flatbufferz", lib_mod);
     exe_tests.addModule("generated", gen_mod);
-    exe_tests.main_pkg_path = .{ .path = "." };
+    exe_tests.main_mod_path = .{ .path = "." };
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");
@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) !void {
 
     const flatc_run = b.addRunArtifact(flatc);
     flatc_run.has_side_effects = true;
-    flatc_run.cwd = b.pathFromRoot(".");
+    flatc_run.cwd = .{ .path = b.pathFromRoot(".") };
     if (b.args) |args| flatc_run.addArgs(args);
     const flatc_run_step = b.step("flatc", "Run packaged flatc compiler");
     flatc_run_step.dependOn(&flatc_run.step);

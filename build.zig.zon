@@ -1,16 +1,15 @@
 .{
     .name = "flatbufferz",
     .version = "0.0.1",
-
+    .paths = .{""},
     .dependencies = .{
         .clap = .{
             .url = "https://github.com/Hejsil/zig-clap/archive/f49b94700e0761b7514abdca0e4f0e7f3f938a93.tar.gz",
             .hash = "1220f48518ce22882e102255ed3bcdb7aeeb4891f50b2cdd3bd74b5b2e24d3149ba2",
         },
         .flatbuffers = .{
-            .url = "https://github.com/travisstaloch/flatbuffers/archive/8610726c44d9c513fe0cfa50b987b14684d763cf.tar.gz",
-            .hash = "1220b400e2f8cf5b19f0f1175de0b62b7012fe90f97bc82fa08ee446975da9332b58",
+            .url = "https://github.com/travisstaloch/flatbuffers/archive/c51180acef37424131721e66641175bc13c7fe34.tar.gz",
+            .hash = "1220cdada4ce9894d912c5a9db958b6be066131d6eefd074c0dfe95880e45d4ff375",
         },
-
-    }
+    },
 }

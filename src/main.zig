@@ -86,7 +86,7 @@ pub fn main() !void {
                 try argv.appendSlice(&.{ "-o", gen_path_full });
                 try argv.append(filename);
                 std.log.debug("argv={s}\n", .{argv.items});
-                const exec_res = try std.ChildProcess.exec(.{ .allocator = alloc, .argv = argv.items });
+                const exec_res = try std.ChildProcess.run(.{ .allocator = alloc, .argv = argv.items });
                 // std.debug.print("term={}\n", .{exec_res.term});
                 // std.debug.print("stderr={s}\n", .{exec_res.stderr});
                 // std.debug.print("stdout={s}\n", .{exec_res.stdout});

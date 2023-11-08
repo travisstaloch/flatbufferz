@@ -17,7 +17,7 @@ pub const FlatBuffer = struct {
 /// GetRootAs is a generic helper to initialize a FlatBuffer with the provided
 /// buffer bytes and its data offset.
 pub fn getRootAs(buf: []u8, offset: u32) !FlatBuffer {
-    const n = try mem.readIntLittle(u32, buf[offset..]);
+    const n = try mem.readInt(u32, buf[offset..], .little);
     return FlatBuffer.init(buf, n + offset);
 }
 
@@ -25,19 +25,19 @@ pub fn getRootAs(buf: []u8, offset: u32) !FlatBuffer {
 /// the provided size-prefixed buffer
 /// bytes and its data offset
 pub fn getSizePrefixedRootAs(buf: []u8, offset: u32) !FlatBuffer {
-    const n = try mem.readIntLittle(u32, buf[offset + size_prefix_length ..]);
+    const n = try mem.readInt(u32, buf[offset + size_prefix_length ..], .little);
     return FlatBuffer.init(buf, n + offset + size_prefix_length);
 }
 
 /// GetSizePrefix reads the size from a size-prefixed flatbuffer
 pub fn getSizePrefix(buf: []u8, offset: u32) u32 {
-    return mem.readIntLittle(u32, buf[offset..]);
+    return mem.readInt(u32, buf[offset..], .little);
 }
 
 /// GetIndirectOffset retrives the relative offset in the provided buffer stored
 ///  at `offset`.
 pub fn getIndirectOffset(buf: []u8, offset: u32) u32 {
-    return offset + mem.readIntLittle(u32, buf[offset..]);
+    return offset + mem.readInt(u32, buf[offset..], .little);
 }
 
 /// read a little-endian T from buf.
@@ -49,7 +49,7 @@ pub fn read(comptime T: type, buf: []const u8) T {
                 .signedness = .unsigned,
                 .bits = info.Float.bits,
             } });
-            return @bitCast(mem.readIntLittle(I, buf[0..@sizeOf(T)]));
+            return @bitCast(mem.readInt(I, buf[0..@sizeOf(T)], .little));
         },
         .Bool => return buf[0] != 0,
         .Enum => {
@@ -64,14 +64,14 @@ pub fn read(comptime T: type, buf: []const u8) T {
                         unreachable,
                 },
             });
-            const i = mem.readIntLittle(I, buf[0..@sizeOf(I)]);
+            const i = mem.readInt(I, buf[0..@sizeOf(I)], .little);
             return std.meta.intToEnum(T, i) catch
                 std.debug.panic(
                 "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
                 .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
             );
         },
-        else => return mem.readIntLittle(T, buf[0..@sizeOf(T)]),
+        else => return mem.readInt(T, buf[0..@sizeOf(T)], .little),
     }
 }
 
@@ -84,21 +84,21 @@ pub fn write(comptime T: type, buf: []u8, t: T) void {
                 .signedness = .unsigned,
                 .bits = info.Float.bits,
             } });
-            mem.writeIntLittle(I, buf[0..@sizeOf(T)], @as(I, @bitCast(t)));
+            mem.writeInt(I, buf[0..@sizeOf(T)], @as(I, @bitCast(t)), .little);
         },
-        .Bool => mem.writeIntLittle(u8, buf[0..1], @intFromBool(t)),
+        .Bool => mem.writeInt(u8, buf[0..1], @intFromBool(t), .little),
         .Enum => {
             const Tag = info.Enum.tag_type;
             const taginfo = @typeInfo(Tag);
             const I = @Type(.{
                 .Int = .{
                     .signedness = taginfo.Int.signedness,
-                    .bits = comptime std.math.ceilPowerOfTwo(u16, taginfo.Int.bits) catch
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(8, taginfo.Int.bits)) catch
                         unreachable,
                 },
             });
-            mem.writeIntLittle(I, buf[0..@sizeOf(I)], @intFromEnum(t));
+            mem.writeInt(I, buf[0..@sizeOf(I)], @intFromEnum(t), .little);
         },
-        else => mem.writeIntLittle(T, buf[0..@sizeOf(T)], t),
+        else => mem.writeInt(T, buf[0..@sizeOf(T)], t, .little),
     }
 }

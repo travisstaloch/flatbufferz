@@ -425,8 +425,8 @@ fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: 
 
             const fty_fmt = TypeFmt.init(ev.UnionType().?, schema, .keep_ns, imports, .{});
             try writer.print(
-                \\var x = {0}.init(table.bytes, table.pos);
-                \\var ptr = try __pack_opts.allocator.?.create({0}T);
+                \\const x = {0}.init(table.bytes, table.pos);
+                \\const ptr = try __pack_opts.allocator.?.create({0}T);
                 \\ptr.* = try {0}T.Unpack(x, __pack_opts);
                 \\return .{{ .{1s} = ptr }};
                 \\}},
@@ -2656,7 +2656,7 @@ fn genEnumTest(e: Enum, writer: anytype) !void {
         \\    const end = try obj.Pack(&b, opts);
         \\    try b.finish(end);
         \\    const bytes = try b.finishedBytes();
-        \\    var table = fb.Table.init(bytes, 0);
+        \\    const table = fb.Table.init(bytes, 0);
         \\    const obj2 = try {0s}T.Unpack(.NONE, table, opts);
         \\    var b2 = Builder.init(std.testing.allocator);
         \\    defer b2.deinitAll();
@@ -2781,7 +2781,7 @@ pub fn generate(
     const content = try f.readToEndAlloc(alloc, std.math.maxInt(u16));
     defer alloc.free(content);
     const schema = Schema.GetRootAs(content, 0);
-    var needs_imports = false;
+    const needs_imports = false;
 
     var imports = TypenameSet.init(alloc);
     std.log.debug("schema.EnumsLen()={}", .{schema.EnumsLen()});

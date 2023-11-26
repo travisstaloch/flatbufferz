@@ -83,7 +83,7 @@ pub const GenStep = struct {
 
     // recursively visit path and child directories
     fn visit(self: *const GenStep, path: []const u8, writer: anytype) !void {
-        var dir = try std.fs.cwd().openIterableDir(path, .{});
+        var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
         defer dir.close();
         var iter = dir.iterate();
         while (try iter.next()) |entry| {

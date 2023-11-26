@@ -643,7 +643,7 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
 
     const offset = try b.endObject();
 
-    var t = fb.Table{
+    const t = fb.Table{
         .bytes = b.bytes.items,
         .pos = @as(u32, @intCast(b.bytes.items.len)) - offset,
     };
@@ -744,7 +744,7 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
 
 /// create len random valid utf8 strings w/ maxlen 256
 fn createRandomStrings(alloc: mem.Allocator, len: usize, rand: std.rand.Random) ![]std.ArrayListUnmanaged(u8) {
-    var strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
+    const strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
     for (strings) |*s| {
         s.* = .{};
         const slen = rand.int(u8);
@@ -972,7 +972,7 @@ fn checkMutateBuffer(
     sizePrefix: bool,
 ) !void {
     // make a copy to mutate
-    var buf = try alloc.dupe(u8, org);
+    const buf = try alloc.dupe(u8, org);
     defer alloc.free(buf);
 
     // load monster data from the buffer
@@ -1760,7 +1760,7 @@ fn checkFuzz(alloc: mem.Allocator, fuzzFields: u32, fuzzObjects: u32) !void {
             .{ fuzzFields, fuzzObjects, 0 },
         )
     else {
-        var ctx: SortCtx = .{ .keys = stats.keys() };
+        const ctx: SortCtx = .{ .keys = stats.keys() };
         stats.sort(ctx);
         for (stats.keys(), 0..) |k, i| {
             std.log.info(

@@ -25,8 +25,8 @@ pub fn main() !void {
     var builder = Builder.init(alloc);
 
     // Create some weapons for our Monster ("Sword" and "Axe").
-    var weaponOne = try builder.createString("Sword");
-    var weaponTwo = try builder.createString("Axe");
+    const weaponOne = try builder.createString("Sword");
+    const weaponTwo = try builder.createString("Axe");
 
     try Weapon.Start(&builder);
     try Weapon.AddName(&builder, weaponOne);

@@ -277,7 +277,7 @@ pub fn growByteBuffer(b: *Builder) !void {
     }
 
     const middle = new_len / 2;
-    std.mem.copy(u8, b.bytes.items[middle..], b.bytes.items[0..middle]);
+    std.mem.copyForwards(u8, b.bytes.items[middle..], b.bytes.items[0..middle]);
 }
 
 /// returns offset relative to the end of the buffer.
@@ -408,7 +408,7 @@ pub fn createString(b: *Builder, s: []const u8) !u32 {
     const l: u32 = @intCast(s.len);
 
     b.head -= l;
-    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
+    std.mem.copyForwards(u8, b.bytes.items[b.head .. b.head + l], s);
 
     return b.endVector(@intCast(s.len));
 }
@@ -424,7 +424,7 @@ pub fn createByteString(b: *Builder, s: []const u8) !u32 {
     const l: u32 = @intCast(s.len);
 
     b.head -= l;
-    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], s);
+    std.mem.copyForwards(u8, b.bytes.items[b.head .. b.head + l], s);
 
     return b.endVector(@intCast(s.len));
 }
@@ -439,7 +439,7 @@ pub fn createByteVector(b: *Builder, v: []const u8) !u32 {
     const l: u32 = @intCast(v.len);
 
     b.head -= l;
-    std.mem.copy(u8, b.bytes.items[b.head .. b.head + l], v);
+    std.mem.copyForwards(u8, b.bytes.items[b.head .. b.head + l], v);
 
     return b.endVector(@intCast(v.len));
 }

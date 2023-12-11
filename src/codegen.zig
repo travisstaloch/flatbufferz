@@ -52,7 +52,7 @@ fn zigScalarTypename(base_type: BaseType) []const u8 {
 pub const scalar_sizes = blk: {
     const tags = std.meta.tags(BaseType);
     var result: [tags.len]?u32 = undefined;
-    inline for (tags, 0..) |tag, i| {
+    for (tags, 0..) |tag, i| {
         result[i] = switch (tag) {
             .Bool => 1,
             .Byte => 1,

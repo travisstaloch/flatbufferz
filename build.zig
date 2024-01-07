@@ -16,9 +16,9 @@ pub fn build(b: *std.Build) !void {
     // expose module 'flatbufferz' to dependees
     const lib_mod = b.addModule(
         "flatbufferz",
-        .{ .source_file = .{ .path = "src/lib.zig" } },
+        .{ .root_source_file = .{ .path = "src/lib.zig" } },
     );
-    try lib_mod.dependencies.put("flatbufferz", lib_mod);
+    try lib_mod.import_table.put(b.allocator, "flatbufferz", lib_mod);
 
     const zig_clap_pkg = b.dependency("clap", .{
         .target = target,
@@ -32,9 +32,9 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe.addModule("flatbufferz", lib_mod);
-    exe.addModule("zig-clap", zig_clap);
-    exe.addOptions("build_options", build_options);
+    exe.root_module.addImport("flatbufferz", lib_mod);
+    exe.root_module.addImport("zig-clap", zig_clap);
+    exe.root_module.addOptions("build_options", build_options);
 
     b.installArtifact(exe);
 
@@ -55,19 +55,22 @@ pub fn build(b: *std.Build) !void {
         "examples/optional_scalars.fbs",
     }, &.{ "-I", "examples/include_test", "-I", "examples/include_test/sub" }, "flatc-zig");
     const gen_mod = b.createModule(.{
-        .source_file = gen_step.module.source_file,
-        .dependencies = &.{.{ .name = "flatbufferz", .module = lib_mod }},
+        .root_source_file = gen_step.module.root_source_file,
+        .imports = &.{.{ .name = "flatbufferz", .module = lib_mod }},
     });
+    const examples_mod = b.createModule(
+        .{ .root_source_file = .{ .path = "examples/lib.zig" } },
+    );
 
     const exe_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/tests.zig" },
         .target = target,
         .optimize = optimize,
     });
-    exe_tests.addOptions("build_options", build_options);
-    exe_tests.addModule("flatbufferz", lib_mod);
-    exe_tests.addModule("generated", gen_mod);
-    exe_tests.main_mod_path = .{ .path = "." };
+    exe_tests.root_module.addOptions("build_options", build_options);
+    exe_tests.root_module.addImport("flatbufferz", lib_mod);
+    exe_tests.root_module.addImport("generated", gen_mod);
+    exe_tests.root_module.addImport("examples", examples_mod);
     exe_tests.step.dependOn(&gen_step.step);
 
     const test_step = b.step("test", "Run unit tests");
@@ -81,9 +84,9 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    sample_exe.addOptions("build_options", build_options);
-    sample_exe.addModule("flatbufferz", lib_mod);
-    sample_exe.addModule("generated", gen_mod);
+    sample_exe.root_module.addOptions("build_options", build_options);
+    sample_exe.root_module.addImport("flatbufferz", lib_mod);
+    sample_exe.root_module.addImport("generated", gen_mod);
     sample_exe.step.dependOn(&gen_step.step);
 
     b.installArtifact(sample_exe);

@@ -1,18 +1,18 @@
 const std = @import("std");
 
 pub const GenStep = struct {
-    step: std.build.Step,
-    b: *std.build.Builder,
-    sources: std.ArrayListUnmanaged(std.build.FileSource) = .{},
+    step: std.Build.Step,
+    b: *std.Build,
+    sources: std.ArrayListUnmanaged(std.Build.GeneratedFile) = .{},
     cache_path: []const u8,
-    lib_file: std.build.GeneratedFile,
+    lib_file: std.Build.GeneratedFile,
     module: *std.Build.Module,
 
     /// init a GenStep, create zig-cache/flatc-zig if not exists, setup
     /// dependencies, and setup args to exe.run()
     pub fn create(
-        b: *std.build.Builder,
-        exe: *std.build.LibExeObjStep,
+        b: *std.Build,
+        exe: *std.Build.Step.Compile,
         files: []const []const u8,
         args: []const []const u8,
         cache_subdir: []const u8,
@@ -33,7 +33,7 @@ pub const GenStep = struct {
         );
 
         self.* = GenStep{
-            .step = std.build.Step.init(.{
+            .step = std.Build.Step.init(.{
                 .id = .custom,
                 .name = "build-template",
                 .owner = b,
@@ -45,13 +45,13 @@ pub const GenStep = struct {
                 .step = &self.step,
                 .path = lib_path,
             },
-            .module = b.createModule(.{ .source_file = .{ .path = lib_path } }),
+            .module = b.createModule(.{ .root_source_file = .{ .path = lib_path } }),
         };
 
         for (files) |file| {
             const source = try self.sources.addOne(b.allocator);
-            source.* = .{ .path = file };
-            source.addStepDependencies(&self.step);
+            source.* = .{ .path = file, .step = &self.step };
+            // source.addStepDependencies(&self.step);
         }
 
         const run_cmd = b.addRunArtifact(exe);
@@ -71,7 +71,7 @@ pub const GenStep = struct {
     /// iterate over all files in self.cache_path
     /// and create a 'lib.zig' file at self.lib_file.path which exports all
     /// generated .fb.zig files
-    fn make(step: *std.build.Step, _: *std.Progress.Node) !void {
+    fn make(step: *std.Build.Step, _: *std.Progress.Node) !void {
         const self = @fieldParentPtr(GenStep, "step", step);
 
         var file = try std.fs.cwd().createFile(self.lib_file.path.?, .{});

@@ -27,7 +27,7 @@ const OptionalByte = gen.optional_scalars_OptionalByte.OptionalByte;
 const expectEqualDeep = @import("testing.zig").expectEqualDeep;
 
 test {
-    _ = @import("../examples/sample_binary.zig");
+    _ = @import("examples").sample_binary;
     try std.testing.expectEqualStrings("Foo", fb.codegen.firstName("Foo.Bar"));
     try std.testing.expectEqualStrings("Foo", fb.codegen.firstName("Foo"));
 }

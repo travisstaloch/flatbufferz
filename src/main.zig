@@ -37,6 +37,7 @@ pub fn main() !void {
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &clap_params, clap.parsers.default, .{
         .diagnostic = &diag,
+        .allocator = alloc,
     }) catch |e| {
         diag.report(std.io.getStdErr().writer(), e) catch {};
         return e;

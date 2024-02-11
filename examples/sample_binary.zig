@@ -10,8 +10,8 @@ const Vec3 = @import("generated").Vec3.Vec3;
 const Color = @import("generated").Color.Color;
 const Equipment = @import("generated").Equipment.Equipment;
 
-pub const std_options = struct {
-    pub const log_level = std.meta.stringToEnum(std.log.Level, @tagName(@import("build_options").log_level)).?;
+pub const std_options = .{
+    .log_level = std.meta.stringToEnum(std.log.Level, @tagName(@import("build_options").log_level)).?,
 };
 
 test Monster {

@@ -5,11 +5,11 @@ const clap = @import("zig-clap");
 const util = fb.util;
 const build_options = @import("build_options");
 
-pub const std_options = struct {
-    pub const log_level = std.meta.stringToEnum(
+pub const std_options = .{
+    .log_level = std.meta.stringToEnum(
         std.log.Level,
         @tagName(@import("build_options").log_level),
-    ).?;
+    ).?,
 };
 
 fn usage(params: []const clap.Param(clap.Help), res: anytype) !void {

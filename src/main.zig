@@ -96,7 +96,7 @@ pub fn main() !void {
                     std.debug.print("\nerror: flatc command failure:\n", .{});
                     std.debug.print("{s}\n", .{exec_res.stderr});
                     if (exec_res.stdout.len > 0) try stdout.print("{s}\n", .{exec_res.stdout});
-                    std.os.exit(1);
+                    std.process.exit(1);
                 }
 
                 const bfbs_filename = try std.mem.concat(alloc, u8, &.{ filename_noext, ".bfbs" });
@@ -109,7 +109,7 @@ pub fn main() !void {
                     "unexpected extension '{s}' in '{s}'. expected either .fbs or .bfbs.",
                     .{ std.fs.path.extension(filename), filename },
                 );
-                std.os.exit(1);
+                std.process.exit(1);
             };
             try fb.codegen.generate(alloc, bfbs_path, gen_path, filename_noext, res.args);
         }

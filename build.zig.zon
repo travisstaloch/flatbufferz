@@ -4,13 +4,13 @@
     .paths = .{""},
     .dependencies = .{
         .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/8c98e6404b22aafc0184e999d8f068b81cc22fa1.tar.gz",
-            .hash = "122014e73fd712190e109950837b97f6143f02d7e2b6986e1db70b6f4aadb5ba6a0d",
+            .url = "https://github.com/Hejsil/zig-clap/archive/7a2883c7b884ab3e88c9fbf29193894a844da4d5.tar.gz",
+            .hash = "12204b2fb733b2de9184d1907032709e79c2595b4adc9bed12a8383b114d4c0da932",
 
         },
         .flatbuffers = .{
-            .url = "https://github.com/travisstaloch/flatbuffers/archive/c51180acef37424131721e66641175bc13c7fe34.tar.gz",
-            .hash = "1220cdada4ce9894d912c5a9db958b6be066131d6eefd074c0dfe95880e45d4ff375",
+            .url = "https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.tar.gz",
+            .hash = "1220e0e4410050d40ea6ca4b70456c2a71e28fa6573c7d7c465e423d643325c6a957",
         },
     },
 }

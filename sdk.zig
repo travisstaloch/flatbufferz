@@ -18,10 +18,7 @@ pub const GenStep = struct {
         cache_subdir: []const u8,
     ) !*GenStep {
         const self = b.allocator.create(GenStep) catch unreachable;
-        const cache_root = std.fs.path.resolve(
-            b.allocator,
-            &.{b.cache_root.path orelse "."},
-        ) catch @panic("OOM");
+        const cache_root = std.fs.path.basename(b.cache_root.path orelse ".");
 
         const cache_path = try std.fs.path.join(
             b.allocator,
@@ -45,7 +42,7 @@ pub const GenStep = struct {
                 .step = &self.step,
                 .path = lib_path,
             },
-            .module = b.createModule(.{ .root_source_file = .{ .path = lib_path } }),
+            .module = b.createModule(.{ .root_source_file = b.path(lib_path) }),
         };
 
         for (files) |file| {

@@ -13,16 +13,13 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
-#    - name: Install flatc
-#      run: sudo apt-get install -y flatbuffers-compiler
+      uses: actions/checkout@v3
 
     - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v1.3.0
+      uses: mlugg/setup-zig@v1
       with:
         version: master
-        # version: 0.10.0
-        # version: 0.11.0-dev.1987+a2c6ecd6d
+
     - run: zig build run-sample
     - run: zig build test
     - run: zig build

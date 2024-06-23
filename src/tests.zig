@@ -743,7 +743,7 @@ fn checkMutateMethods(alloc: mem.Allocator) !void {
 }
 
 /// create len random valid utf8 strings w/ maxlen 256
-fn createRandomStrings(alloc: mem.Allocator, len: usize, rand: std.rand.Random) ![]std.ArrayListUnmanaged(u8) {
+fn createRandomStrings(alloc: mem.Allocator, len: usize, rand: std.Random) ![]std.ArrayListUnmanaged(u8) {
     const strings = try alloc.alloc(std.ArrayListUnmanaged(u8), len);
     for (strings) |*s| {
         s.* = .{};
@@ -763,7 +763,7 @@ fn createRandomStrings(alloc: mem.Allocator, len: usize, rand: std.rand.Random) 
 }
 
 fn checkSharedStrings(alloc: mem.Allocator) !void {
-    var prng = std.rand.DefaultPrng.init(0);
+    var prng = std.Random.DefaultPrng.init(0);
     const rand = prng.random();
     const len = 100;
     for (0..len) |_| {
@@ -788,7 +788,7 @@ fn checkSharedStrings(alloc: mem.Allocator) !void {
 }
 
 fn checkEmptiedBuilder(alloc: mem.Allocator) !void {
-    var prng = std.rand.DefaultPrng.init(0);
+    var prng = std.Random.DefaultPrng.init(0);
     const rand = prng.random();
     const len = 100;
     const strings = try createRandomStrings(alloc, len, rand);

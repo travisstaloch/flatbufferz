@@ -480,7 +480,7 @@ fn saveType(
     if (contents.len == 0) return;
 
     _ = .{ needs_imports, kind };
-    var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
     const outpath = try typenameToPath(&buf, gen_path, typename, ".fb.zig");
     std.fs.cwd().makePath(std.fs.path.dirname(outpath).?) catch |e| {
         std.log.err("couldn't make dir {?s}", .{std.fs.path.dirname(outpath)});
@@ -562,7 +562,7 @@ fn populateNs(
 }
 
 fn commonNsPrefixLen(a: []const u8, b: []const u8) usize {
-    var iter = mem.split(u8, a, ".");
+    var iter = mem.splitScalar(u8, a, '.');
     var pos: usize = 0;
     var mnext = iter.next();
     while (mnext) |it| : (pos += it.len) {
@@ -2769,7 +2769,7 @@ pub fn generate(
         "bfbs_path={s} gen_path={s} basename={s}",
         .{ bfbs_path, gen_path, basename },
     );
-    var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
     const dirname_len = if (std.fs.path.dirname(basename)) |dirname|
         dirname.len + 1
     else

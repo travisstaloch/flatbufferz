@@ -616,7 +616,7 @@ fn writeNs(
                     \\
                 , .{ typename, full_name, path_buf.constSlice(), common_prefix_len, @tagName(base_ty) });
                 if (path_buf.len > 0) {
-                    var buf: [@typeInfo(@TypeOf(path_buf.buffer)).Array.len]u8 = undefined;
+                    var buf: [@typeInfo(@TypeOf(path_buf.buffer)).array.len]u8 = undefined;
                     for (path_buf.constSlice(), 0..) |c, i| {
                         buf[i] = if (c == '.') '/' else c;
                     }

@@ -30,7 +30,7 @@ finished: bool,
 shared_strings: std.StringHashMapUnmanaged(u32) = .{},
 
 pub const Fid = [4]u8;
-pub const file_identifier_len: i32 = @typeInfo(Fid).Array.len;
+pub const file_identifier_len: i32 = @typeInfo(Fid).array.len;
 pub const size_prefix_length = 4;
 
 pub const size_u8 = @sizeOf(u8);

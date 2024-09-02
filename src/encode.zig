@@ -44,23 +44,23 @@ pub fn getIndirectOffset(buf: []u8, offset: u32) u32 {
 pub fn read(comptime T: type, buf: []const u8) T {
     const info = @typeInfo(T);
     switch (info) {
-        .Float => {
-            const I = @Type(.{ .Int = .{
+        .float => {
+            const I = @Type(.{ .int = .{
                 .signedness = .unsigned,
-                .bits = info.Float.bits,
+                .bits = info.float.bits,
             } });
             return @bitCast(mem.readInt(I, buf[0..@sizeOf(T)], .little));
         },
-        .Bool => return buf[0] != 0,
-        .Enum => {
-            const Tag = info.Enum.tag_type;
+        .bool => return buf[0] != 0,
+        .@"enum" => {
+            const Tag = info.@"enum".tag_type;
             const taginfo = @typeInfo(Tag);
             const I = @Type(.{
-                .Int = .{
-                    .signedness = taginfo.Int.signedness,
+                .int = .{
+                    .signedness = taginfo.int.signedness,
                     // ceilPowerOfTwo(@max()) is needed here for union(enum)
                     // Tags which may have odd tag sizes
-                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(taginfo.Int.bits, 8)) catch
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(taginfo.int.bits, 8)) catch
                         unreachable,
                 },
             });
@@ -79,21 +79,21 @@ pub fn read(comptime T: type, buf: []const u8) T {
 pub fn write(comptime T: type, buf: []u8, t: T) void {
     const info = @typeInfo(T);
     switch (info) {
-        .Float => {
-            const I = @Type(.{ .Int = .{
+        .float => {
+            const I = @Type(.{ .int = .{
                 .signedness = .unsigned,
-                .bits = info.Float.bits,
+                .bits = info.float.bits,
             } });
             mem.writeInt(I, buf[0..@sizeOf(T)], @as(I, @bitCast(t)), .little);
         },
-        .Bool => mem.writeInt(u8, buf[0..1], @intFromBool(t), .little),
-        .Enum => {
-            const Tag = info.Enum.tag_type;
+        .bool => mem.writeInt(u8, buf[0..1], @intFromBool(t), .little),
+        .@"enum" => {
+            const Tag = info.@"enum".tag_type;
             const taginfo = @typeInfo(Tag);
             const I = @Type(.{
-                .Int = .{
-                    .signedness = taginfo.Int.signedness,
-                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(8, taginfo.Int.bits)) catch
+                .int = .{
+                    .signedness = taginfo.int.signedness,
+                    .bits = comptime std.math.ceilPowerOfTwo(u16, @max(8, taginfo.int.bits)) catch
                         unreachable,
                 },
             });

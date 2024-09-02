@@ -18,33 +18,33 @@ const std = @import("std");
 /// Note: Self-referential structs are not supported (e.g. things like std.SinglyLinkedList)
 pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestExpectedEqual}!void {
     switch (@typeInfo(@TypeOf(actual))) {
-        .NoReturn,
-        .Opaque,
-        .Frame,
-        .AnyFrame,
+        .noreturn,
+        .@"opaque",
+        .frame,
+        .@"anyframe",
         => @compileError("value of type " ++ @typeName(@TypeOf(actual)) ++ " encountered"),
 
-        .Undefined,
-        .Null,
-        .Void,
+        .undefined,
+        .null,
+        .void,
         => return,
 
-        .Type => {
+        .type => {
             if (actual != expected) {
                 std.debug.print("expected type {s}, found type {s}\n", .{ @typeName(expected), @typeName(actual) });
                 return error.TestExpectedEqual;
             }
         },
 
-        .Bool,
-        .Int,
-        .Float,
-        .ComptimeFloat,
-        .ComptimeInt,
-        .EnumLiteral,
-        .Enum,
-        .Fn,
-        .ErrorSet,
+        .bool,
+        .int,
+        .float,
+        .comptime_float,
+        .comptime_int,
+        .enum_literal,
+        .@"enum",
+        .@"fn",
+        .error_set,
         => {
             if (actual != expected) {
                 std.debug.print("expected {}, found {}\n", .{ expected, actual });
@@ -52,7 +52,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Pointer => |pointer| {
+        .pointer => |pointer| {
             switch (pointer.size) {
                 // We have no idea what is behind those pointers, so the best we can do is `==` check.
                 .C, .Many => {
@@ -64,7 +64,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
                 .One => {
                     // Length of those pointers are runtime value, so the best we can do is `==` check.
                     switch (@typeInfo(pointer.child)) {
-                        .Fn, .Opaque => {
+                        .@"fn", .@"opaque" => {
                             if (actual != expected) {
                                 std.debug.print("expected {*}, found {*}\n", .{ expected, actual });
                                 return error.TestExpectedEqual;
@@ -91,7 +91,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Array => |_| {
+        .array => |_| {
             if (expected.len != actual.len) {
                 std.debug.print("Array len not the same, expected {d}, found {d}\n", .{ expected.len, actual.len });
                 return error.TestExpectedEqual;
@@ -107,7 +107,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Vector => |info| {
+        .vector => |info| {
             if (info.len != @typeInfo(@TypeOf(actual)).Vector.len) {
                 std.debug.print("Vector len not the same, expected {d}, found {d}\n", .{ info.len, @typeInfo(@TypeOf(actual)).Vector.len });
                 return error.TestExpectedEqual;
@@ -123,7 +123,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Struct => |structType| {
+        .@"struct" => |structType| {
             inline for (structType.fields) |field| {
                 expectEqualDeep(@field(expected, field.name), @field(actual, field.name)) catch |e| {
                     std.debug.print("Field {s} incorrect. expected {any}, found {any}\n", .{ field.name, @field(expected, field.name), @field(actual, field.name) });
@@ -132,7 +132,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Union => |union_info| {
+        .@"union" => |union_info| {
             if (union_info.tag_type == null) {
                 @compileError("Unable to compare untagged union values");
             }
@@ -152,7 +152,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .Optional => {
+        .optional => {
             if (expected) |expected_payload| {
                 if (actual) |actual_payload| {
                     try expectEqualDeep(expected_payload, actual_payload);
@@ -168,7 +168,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
             }
         },
 
-        .ErrorUnion => {
+        .error_union => {
             if (expected) |expected_payload| {
                 if (actual) |actual_payload| {
                     try expectEqualDeep(expected_payload, actual_payload);

@@ -1,5 +1,4 @@
 const std = @import("std");
-const sdk = @import("sdk.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -47,7 +46,7 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&exe_run.step);
 
     // generate files that need to be avaliable in tests
-    const gen_step = try sdk.GenStep.create(b, exe, &.{
+    const gen_step = try GenStep.create(b, exe, &.{
         "examples/sample.fbs",
         "examples/monster_test.fbs",
         "examples/include_test/order.fbs",
@@ -194,3 +193,138 @@ pub fn build(b: *std.Build) !void {
     const flatc_run_step = b.step("flatc", "Run packaged flatc compiler");
     flatc_run_step.dependOn(&flatc_run.step);
 }
+
+pub const GenStep = struct {
+    step: std.Build.Step,
+    b: *std.Build,
+    sources: std.ArrayListUnmanaged(std.Build.GeneratedFile) = .{},
+    cache_path: []const u8,
+    lib_file: std.Build.GeneratedFile,
+    module: *std.Build.Module,
+
+    /// init a GenStep, create zig-cache/flatc-zig if not exists, setup
+    /// dependencies, and setup args to exe.run()
+    pub fn create(
+        b: *std.Build,
+        exe: *std.Build.Step.Compile,
+        files: []const []const u8,
+        args: []const []const u8,
+        cache_subdir: []const u8,
+    ) !*GenStep {
+        const self = b.allocator.create(GenStep) catch unreachable;
+        const cache_root = std.fs.path.basename(b.cache_root.path orelse ".");
+
+        const cache_path = try std.fs.path.join(
+            b.allocator,
+            &.{ cache_root, cache_subdir },
+        );
+        const lib_path = try std.fs.path.join(
+            b.allocator,
+            &.{ cache_path, "lib.zig" },
+        );
+
+        self.* = GenStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "build-template",
+                .owner = b,
+                .makeFn = make,
+            }),
+            .b = b,
+            .cache_path = cache_path,
+            .lib_file = .{
+                .step = &self.step,
+                .path = lib_path,
+            },
+            .module = b.createModule(.{ .root_source_file = b.path(lib_path) }),
+        };
+
+        for (files) |file| {
+            const source = try self.sources.addOne(b.allocator);
+            source.* = .{ .path = file, .step = &self.step };
+            // source.addStepDependencies(&self.step);
+        }
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(&exe.step);
+
+        try b.cache_root.handle.makePath(cache_subdir);
+
+        run_cmd.addArgs(&.{ "-o", cache_path });
+        run_cmd.addArgs(args);
+        run_cmd.addArgs(files);
+
+        self.step.dependOn(&run_cmd.step);
+
+        return self;
+    }
+
+    /// iterate over all files in self.cache_path
+    /// and create a 'lib.zig' file at self.lib_file.path which exports all
+    /// generated .fb.zig files
+    fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
+        const self: *GenStep = @fieldParentPtr("step", step);
+
+        var file = try std.fs.cwd().createFile(self.lib_file.path.?, .{});
+        defer file.close();
+        const writer = file.writer();
+
+        try self.visit(self.cache_path, writer);
+    }
+
+    // recursively visit path and child directories
+    fn visit(self: *const GenStep, path: []const u8, writer: anytype) !void {
+        var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+        defer dir.close();
+        var iter = dir.iterate();
+        while (try iter.next()) |entry| {
+            if (entry.kind == .directory) {
+                const sub_path = try std.fs.path.join(self.b.allocator, &.{ path, entry.name });
+                defer self.b.allocator.free(sub_path);
+                try self.visit(sub_path, writer);
+                continue;
+            }
+            if (entry.kind != .file) continue;
+            // extract file name identifier: a/b/foo.fb.zig => foo
+            const endidx = std.mem.lastIndexOf(u8, entry.name, ".fb.zig") orelse
+                continue;
+            const startidx = if (std.mem.lastIndexOfScalar(
+                u8,
+                entry.name[0..endidx],
+                '/',
+            )) |i| i + 1 else 0;
+            const name = entry.name[startidx..endidx];
+            // remove illegal characters to make a zig identifier
+            var buf: [256]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buf);
+            const fbswriter = fbs.writer();
+            if (self.cache_path.len < path.len) {
+                _ = try fbswriter.write(path[self.cache_path.len + 1 ..]);
+                _ = try fbswriter.writeByte('_');
+            }
+            _ = try fbswriter.write(name);
+            const ident = fbs.getWritten();
+            if (!std.ascii.isAlphabetic(ident[0]) and ident[0] != '_') {
+                std.log.err(
+                    "invalid identifier '{s}'. filename must start with alphabetic or underscore",
+                    .{ident},
+                );
+                return error.InvalidIdentifier;
+            }
+            for (ident, 0..) |c, i| {
+                if (!(std.ascii.isAlphanumeric(c) or c == '-')) ident[i] = '_';
+            }
+
+            if (self.cache_path.len < path.len)
+                try writer.print(
+                    \\pub const {s} = @import("{s}{c}{s}.fb.zig");
+                    \\
+                , .{ ident, path[self.cache_path.len + 1 ..], std.fs.path.sep, entry.name[0..endidx] })
+            else
+                try writer.print(
+                    \\pub const {s} = @import("{s}.fb.zig");
+                    \\
+                , .{ ident, entry.name[0..endidx] });
+        }
+    }
+};

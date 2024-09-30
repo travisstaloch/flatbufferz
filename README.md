@@ -1,18 +1,18 @@
-:warning: This project is in its early early stages. expect bugs and missing features. :warning:
+:warning: This project is in its early early stages. Beware of bugs and missing features. :warning:
 
 # About
 
 Generate zig code from flatbuffer schema files which can de/serialize flatbuffer messages. Depends on packaged flatc to parse .fbs files.
 
-Developed against zig version `0.11.0-dev.2213+515e1c93e`
+CI tested weekly with latest zig version.
 
 This project depends on packaged `flatc` compiler @v23.3.3, built with zig using [a fork of google/flatbuffers](https://github.com/travisstaloch/flatbuffers).
 
-# Usage
+# Gen Steps
+To auto generate code from a flatbuffers file in your build.zig see the example in [#18](https://github.com/travisstaloch/flatbufferz/pull/18).
 
-```console
-zig build
-```
+
+# Usage
 
 Run packaged flatc
 ```console
@@ -46,7 +46,12 @@ gen/People/Person.fb.zig
 ```
 
 You can now import these files into your zig application.  The compiled .fb.zig
-files depend on a "flatbufferz" module which can be provided by:
+files depend on a "flatbufferz" module which can be provided by running:
+```console
+zig fetch --save=flatbufferz https://github.com/travisstaloch/flatbufferz/archive/be8fc9bfdfe416fe5b2ce24ed8f0e16700c103fb.tar.gz
+```
+
+That will add a dependency to your build.zig.zon:
 ```zig
 // build.zig.zon
 .{
@@ -56,13 +61,14 @@ files depend on a "flatbufferz" module which can be provided by:
     .dependencies = .{
         .flatbufferz = .{
             // note: you may need to change this url commit hash
-            .url = "https://github.com/travisstaloch/flatbufferz/archive/f8c035f29893a2b30902ed61b0d8702e8f52f435.tar.gz",
+            .url = "https://github.com/travisstaloch/flatbufferz/archive/be8fc9bfdfe416fe5b2ce24ed8f0e16700c103fb.tar.gz",
         },
     }
 }
 
 ```
 
+To add flatbufferz to a manually generated module.
 ```zig
 // build.zig
 const flatbufferz_dep = b.dependency("flatbufferz", .{
@@ -70,8 +76,13 @@ const flatbufferz_dep = b.dependency("flatbufferz", .{
     .optimize = optimize,
 });
 const flatbufferz_mod = flatbufferz_dep.module("flatbufferz");
-my_exe.addModule("flatbufferz", flatbufferz_mod);
+const my_generated_mod = b.createModule(.{
+    .root_source_file = b.path("src/my_generated.fb.zig"),
+    .imports = &.{.{ .name = "flatbufferz", .module = flatbufferz_mod }},
+});
 ```
+
+To automatically generate code from a flatbuffers file [gen-steps](#gen-steps)
 
 # Tools
 Convert .bfbs to .fbs.

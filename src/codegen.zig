@@ -2615,7 +2615,7 @@ fn genObjectTest(o: Object, writer: anytype) !void {
         \\    var obj = {0s}T{{}};
         \\    var b = Builder.init(std.testing.allocator);
         \\    defer b.deinitAll();
-        \\    const opts = .{{ .allocator = std.testing.allocator }};
+        \\    const opts: fb.common.PackOptions = .{{ .allocator = std.testing.allocator }};
         \\    const end = try obj.Pack(&b, opts);
         \\    try b.finish(end);
         \\    const bytes = try b.finishedBytes();
@@ -2652,7 +2652,7 @@ fn genEnumTest(e: Enum, writer: anytype) !void {
         \\    var obj: {0s}T = .NONE;
         \\    var b = Builder.init(std.testing.allocator);
         \\    defer b.deinitAll();
-        \\    const opts = .{{ .allocator = std.testing.allocator }};
+        \\    const opts: fb.common.PackOptions = .{{ .allocator = std.testing.allocator }};
         \\    const end = try obj.Pack(&b, opts);
         \\    try b.finish(end);
         \\    const bytes = try b.finishedBytes();

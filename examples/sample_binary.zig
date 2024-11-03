@@ -10,7 +10,7 @@ const Vec3 = @import("generated").Vec3.Vec3;
 const Color = @import("generated").Color.Color;
 const Equipment = @import("generated").Equipment.Equipment;
 
-pub const std_options = .{
+pub const std_options: std.Options = .{
     .log_level = std.meta.stringToEnum(std.log.Level, @tagName(@import("build_options").log_level)).?,
 };
 

@@ -183,7 +183,7 @@ pub fn build(b: *std.Build) !void {
     flatc.linkLibCpp();
     b.installArtifact(flatc);
 
-    build_options.addOptionArtifact("flatc_exe_path", flatc);
+    build_options.addOptionPath("flatc_exe_path", flatc.getEmittedBin());
     exe.step.dependOn(&flatc.step);
 
     const flatc_run = b.addRunArtifact(flatc);

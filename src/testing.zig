@@ -55,13 +55,13 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
         .pointer => |pointer| {
             switch (pointer.size) {
                 // We have no idea what is behind those pointers, so the best we can do is `==` check.
-                .C, .Many => {
+                .c, .many => {
                     if (actual != expected) {
                         std.debug.print("expected {*}, found {*}\n", .{ expected, actual });
                         return error.TestExpectedEqual;
                     }
                 },
-                .One => {
+                .one => {
                     // Length of those pointers are runtime value, so the best we can do is `==` check.
                     switch (@typeInfo(pointer.child)) {
                         .@"fn", .@"opaque" => {
@@ -73,7 +73,7 @@ pub fn expectEqualDeep(expected: anytype, actual: @TypeOf(expected)) error{TestE
                         else => try expectEqualDeep(expected.*, actual.*),
                     }
                 },
-                .Slice => {
+                .slice => {
                     if (expected.len != actual.len) {
                         std.debug.print("Slice len not the same, expected {d}, found {d}\n", .{ expected.len, actual.len });
                         return error.TestExpectedEqual;

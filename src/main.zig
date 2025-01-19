@@ -1,9 +1,10 @@
 const std = @import("std");
 const mem = std.mem;
-const fb = @import("flatbufferz");
-const clap = @import("zig-clap");
-const util = fb.util;
 const build_options = @import("build_options");
+
+const clap = @import("zig-clap");
+const fb = @import("flatbufferz");
+const util = fb.util;
 
 pub const std_options: std.Options = .{
     .log_level = std.meta.stringToEnum(
@@ -47,7 +48,7 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     if (res.args.@"bfbs-to-fbs" != 0) {
-        for (res.positionals) |filename| {
+        for (res.positionals[0]) |filename| {
             try util.expectExtension(".bfbs", filename);
             try fb.binary_tools.bfbsToFbs(alloc, filename, stdout);
         }
@@ -74,7 +75,7 @@ pub fn main() !void {
         }
 
         const gen_path = res.args.@"output-path" orelse "";
-        for (res.positionals, 0..) |filename, i| {
+        for (res.positionals[0], 0..) |filename, i| {
             const is_fbs = util.hasExtension(".fbs", filename);
             const is_bfbs = util.hasExtension(".bfbs", filename);
             const ext_offset: u8 = if (is_fbs) 4 else if (is_bfbs) 5 else 0;

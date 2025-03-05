@@ -1,7 +1,8 @@
 .{
-    .name = "flatbufferz",
+    .name = .flatbufferz,
     .version = "0.0.1",
     .paths = .{""},
+    .fingerprint = 0xd70362f5ee0d5f8d,
     .dependencies = .{
         .clap = .{
             .url = "https://github.com/Hejsil/zig-clap/archive/068c38f89814079635692c7d0be9f58508c86173.tar.gz",

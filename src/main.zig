@@ -2,7 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const build_options = @import("build_options");
 
-const clap = @import("zig-clap");
+const flagset = @import("flagset");
 const fb = @import("flatbufferz");
 const util = fb.util;
 
@@ -13,47 +13,49 @@ pub const std_options: std.Options = .{
     ).?,
 };
 
-fn usage(params: []const clap.Param(clap.Help), res: anytype) !void {
-    std.debug.print("usage: {s} <args> <files>\n<files>: either .fbs or .bfbs files.\n<args>:\n", .{res.exe_arg.?});
-    try clap.help(std.io.getStdErr().writer(), clap.Help, params, .{});
-}
-
-const clap_params = clap.parseParamsComptime(
-    \\-h, --help              Display this help and exit.
-    \\--bfbs-to-fbs           Interpret positionals as .bfbs files and convert them to .fbs.  Prints to stdout.
-    \\-o, --output-path <str> Path to write generated content to
-    \\-I, --include-dir <str>... Adds an include directory which gets passed on to flatc.
+const flags = [_]flagset.Flag{
+    .init(bool, "bfbs-to-fbs", .{ .short = 'f', .desc = "Interpret positionals as .bfbs files and convert them to .fbs.  Prints to stdout.", .default_value_ptr = &false }),
+    .init(?[]const u8, "output-path", .{ .short = 'o', .desc = "Path to write generated content to." }),
+    .init([]const u8, "include-dir", .{ .kind = .list, .short = 'I', .desc = "Adds an include directory which gets passed on to flatc." }),
     // \\--gen-onefile           Write all output to a single file.
     // \\--no-gen-object-api     Don't generate an additional object-based API.
-    //    \\--keep-prefix           Keep original prefix of schema include statements.
-    \\<str>...                Files
-    \\
-);
+    // \\--keep-prefix           Keep original prefix of schema include statements.
+};
+
+fn usage() void {
+    std.debug.print("{: <25}", .{flagset.fmtUsage(&flags, .full,
+        \\
+        \\usage: <options> <files>
+        \\
+        \\files: either .fbs or .bfbs files.
+        \\
+        \\
+    )});
+}
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const alloc = arena.allocator();
 
     // parse cli args
-    var diag = clap.Diagnostic{};
-    var res = clap.parse(clap.Help, &clap_params, clap.parsers.default, .{
-        .diagnostic = &diag,
-        .allocator = alloc,
-    }) catch |e| {
-        diag.report(std.io.getStdErr().writer(), e) catch {};
-        return e;
+    var args = try std.process.argsWithAllocator(alloc);
+    defer args.deinit();
+    var res = flagset.parseFromIter(&flags, args, .{ .allocator = alloc }) catch |e| switch (e) {
+        error.HelpRequested => {
+            usage();
+            return;
+        },
+        else => return e,
     };
-    defer res.deinit();
+    defer res.deinit(alloc);
 
     const stdout = std.io.getStdOut().writer();
 
-    if (res.args.@"bfbs-to-fbs" != 0) {
-        for (res.positionals[0]) |filename| {
+    if (res.parsed.@"bfbs-to-fbs") {
+        while (res.unparsed_args.next()) |filename| {
             try util.expectExtension(".bfbs", filename);
             try fb.binary_tools.bfbsToFbs(alloc, filename, stdout);
         }
-    } else if (res.args.help != 0) {
-        try usage(&clap_params, res);
     } else {
         // setup a flatc command args used to gen .bfbs from .fbs args
         var argv = std.ArrayList([]const u8).init(alloc);
@@ -67,15 +69,18 @@ pub fn main() !void {
             // "--raw-binary",
             // "--bfbs-filenames", // TODO consider providing this arg?
         });
-        for (res.args.@"include-dir") |inc| try argv.appendSlice(&.{ "-I", inc });
+        for (res.parsed.@"include-dir".items) |inc|
+            try argv.appendSlice(&.{ "-I", inc });
 
-        if (res.positionals.len == 0) {
-            try usage(&clap_params, res);
+        var tmp_unparsed = res.unparsed_args;
+        if (tmp_unparsed.next() == null) {
+            usage();
             return error.NoPositionals;
         }
 
-        const gen_path = res.args.@"output-path" orelse "";
-        for (res.positionals[0], 0..) |filename, i| {
+        const gen_path = res.parsed.@"output-path" orelse "";
+        var i: usize = 0;
+        while (res.unparsed_args.next()) |filename| : (i += 1) {
             const is_fbs = util.hasExtension(".fbs", filename);
             const is_bfbs = util.hasExtension(".bfbs", filename);
             const ext_offset: u8 = if (is_fbs) 4 else if (is_bfbs) 5 else 0;
@@ -112,7 +117,7 @@ pub fn main() !void {
                 );
                 std.process.exit(1);
             };
-            try fb.codegen.generate(alloc, bfbs_path, gen_path, filename_noext, res.args);
+            try fb.codegen.generate(alloc, bfbs_path, gen_path, filename_noext, res.parsed);
         }
     }
 }

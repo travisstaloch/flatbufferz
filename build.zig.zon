@@ -4,9 +4,9 @@
     .paths = .{""},
     .fingerprint = 0xd70362f5ee0d5f8d,
     .dependencies = .{
-        .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/068c38f89814079635692c7d0be9f58508c86173.tar.gz",
-            .hash = "1220ff14a53e9a54311c9b0e665afeda2c82cfd6f57e7e1b90768bf13b85f9f29cd0",
+        .flagset = .{
+            .url = "git+https://github.com/travisstaloch/flagset#1906a49a12fd82b6b0736bd296aa424001682bda",
+            .hash = "flagset-0.0.1-AVmOhQYTAQClULIUrbKm-rgcV_ddfq7bvNE00E_y8Tay",
         },
         .flatbuffers = .{
             .url = "https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.tar.gz",

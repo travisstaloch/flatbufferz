@@ -19,11 +19,10 @@ pub fn build(b: *std.Build) !void {
     );
     try lib_mod.import_table.put(b.allocator, "flatbufferz", lib_mod);
 
-    const zig_clap_pkg = b.dependency("clap", .{
+    const flagset_dep = b.dependency("flagset", .{
         .target = target,
         .optimize = optimize,
     });
-    const zig_clap = zig_clap_pkg.module("clap");
 
     const exe = b.addExecutable(.{
         .name = "flatc-zig",
@@ -32,7 +31,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     exe.root_module.addImport("flatbufferz", lib_mod);
-    exe.root_module.addImport("zig-clap", zig_clap);
+    exe.root_module.addImport("flagset", flagset_dep.module("flagset"));
     exe.root_module.addOptions("build_options", build_options);
 
     b.installArtifact(exe);

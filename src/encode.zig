@@ -67,9 +67,9 @@ pub fn read(comptime T: type, buf: []const u8) T {
             const i = mem.readInt(I, buf[0..@sizeOf(I)], .little);
             return std.meta.intToEnum(T, i) catch
                 std.debug.panic(
-                "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
-                .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
-            );
+                    "invalid enum value '{}' for '{s}' with Tag '{s}' and I '{s}'",
+                    .{ i, @typeName(T), @typeName(Tag), @typeName(I) },
+                );
         },
         else => return mem.readInt(T, buf[0..@sizeOf(T)], .little),
     }

@@ -5,8 +5,8 @@
     .fingerprint = 0xd70362f5ee0d5f8d,
     .dependencies = .{
         .flagset = .{
-            .url = "git+https://github.com/travisstaloch/flagset#1906a49a12fd82b6b0736bd296aa424001682bda",
-            .hash = "flagset-0.0.1-AVmOhQYTAQClULIUrbKm-rgcV_ddfq7bvNE00E_y8Tay",
+            .url = "git+https://github.com/travisstaloch/flagset#77ac01672230902dbd6cc9ae83ee3b95148bc749",
+            .hash = "flagset-0.0.1-AVmOhZYjAQCXy3Xq86mY9bAdL-61KimkM_6TNlpwEGzA",
         },
         .flatbuffers = .{
             .url = "https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.tar.gz",

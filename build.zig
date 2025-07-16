@@ -26,9 +26,11 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "flatc-zig",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addImport("flatbufferz", lib_mod);
     exe.root_module.addImport("flagset", flagset_dep.module("flagset"));
@@ -61,9 +63,11 @@ pub fn build(b: *std.Build) !void {
     );
 
     const exe_tests = b.addTest(.{
-        .root_source_file = b.path("src/tests.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe_tests.root_module.addOptions("build_options", build_options);
     exe_tests.root_module.addImport("flatbufferz", lib_mod);
@@ -78,9 +82,11 @@ pub fn build(b: *std.Build) !void {
 
     const sample_exe = b.addExecutable(.{
         .name = "sample",
-        .root_source_file = b.path("examples/sample_binary.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/sample_binary.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     sample_exe.root_module.addOptions("build_options", build_options);
     sample_exe.root_module.addImport("flatbufferz", lib_mod);
@@ -101,9 +107,11 @@ pub fn build(b: *std.Build) !void {
 
     const flatc = b.addExecutable(.{
         .name = "flatc",
-        .root_source_file = null,
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = null,
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     //
     // This flatc build was created by running the following commands.  The resulting
@@ -266,9 +274,9 @@ pub const GenStep = struct {
 
         var file = try std.fs.cwd().createFile(self.lib_file.path.?, .{});
         defer file.close();
-        const writer = file.writer();
+        var fwriter = file.writer(&.{});
 
-        try self.visit(self.cache_path, writer);
+        try self.visit(self.cache_path, &fwriter.interface);
     }
 
     // recursively visit path and child directories

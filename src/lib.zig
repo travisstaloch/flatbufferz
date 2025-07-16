@@ -9,4 +9,11 @@ pub const binary_tools = @import("binary_tools.zig");
 pub const codegen = @import("codegen.zig");
 pub const util = @import("util.zig");
 
-pub usingnamespace @import("flatbuffers.zig");
+const fb = @import("flatbuffers.zig");
+
+pub const GetRootAs = fb.GetRootAs;
+pub const GetSizePrefixedRootAs = fb.GetSizePrefixedRootAs;
+pub const GetSizePrefix = fb.GetSizePrefix;
+pub const GetIndirectOffset = fb.GetIndirectOffset;
+pub const GetBufferIdentifier = fb.GetBufferIdentifier;
+pub const BufferHasIdentifier = fb.BufferHasIdentifier;

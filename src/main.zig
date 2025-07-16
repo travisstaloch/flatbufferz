@@ -23,7 +23,7 @@ const flags = [_]flagset.Flag{
 };
 
 fn usage() void {
-    std.debug.print("{: <25}", .{flagset.fmtUsage(&flags, .full,
+    std.debug.print("{f}", .{flagset.fmtUsage(&flags, ": <25", .full,
         \\
         \\usage: <options> <files>
         \\
@@ -49,12 +49,12 @@ pub fn main() !void {
     };
     defer res.deinit(alloc);
 
-    const stdout = std.io.getStdOut().writer();
+    var stdout = std.fs.File.stdout().writer(&.{});
 
     if (res.parsed.@"bfbs-to-fbs") {
         while (res.unparsed_args.next()) |filename| {
             try util.expectExtension(".bfbs", filename);
-            try fb.binary_tools.bfbsToFbs(alloc, filename, stdout);
+            try fb.binary_tools.bfbsToFbs(alloc, filename, &stdout.interface);
         }
     } else {
         // setup a flatc command args used to gen .bfbs from .fbs args
@@ -101,7 +101,7 @@ pub fn main() !void {
                     for (argv.items) |it| std.debug.print("{s} ", .{it});
                     std.debug.print("\nerror: flatc command failure:\n", .{});
                     std.debug.print("{s}\n", .{exec_res.stderr});
-                    if (exec_res.stdout.len > 0) try stdout.print("{s}\n", .{exec_res.stdout});
+                    if (exec_res.stdout.len > 0) try stdout.interface.print("{s}\n", .{exec_res.stdout});
                     std.process.exit(1);
                 }
 

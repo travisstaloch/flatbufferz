@@ -4,7 +4,7 @@ const reflection = fb.reflection;
 
 // TODO field default values - need to check presence. ie Monster.friendly is a
 // bool defaulting to false.  as is, we can't detect it.
-pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: anytype) !void {
+pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: *std.io.Writer) !void {
     const f = try std.fs.cwd().openFile(filename, .{});
     defer f.close();
     const buf = try f.readToEndAlloc(alloc, std.math.maxInt(u16));

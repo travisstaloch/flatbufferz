@@ -494,7 +494,8 @@ fn saveType(
         for (ast.errors) |err| {
             var errbuf = std.ArrayList(u8).init(alloc);
             defer errbuf.deinit();
-            ast.renderError(err, errbuf.writer()) catch {};
+            var adapter = errbuf.writer().adaptToNewApi();
+            ast.renderError(err, &adapter.new_interface) catch {};
             // TODO print a better error message. maybe try to
             // show the source which caused the error?
             std.log.err("formatting {s}: {s}", .{ typename, errbuf.items });
@@ -502,12 +503,10 @@ fn saveType(
         return error.InvalidGeneratedCode;
     }
 
-    const formatted_src = try ast.render(alloc);
-    defer alloc.free(formatted_src);
-
     const f = try std.fs.cwd().createFile(outpath, .{});
     defer f.close();
-    try f.writeAll(formatted_src);
+    var fwriter = f.writer(&.{});
+    try ast.render(alloc, &fwriter.interface, .{});
 }
 
 const NsEntry = union(enum) {

@@ -164,16 +164,16 @@ fn checkByteLayout(alloc: mem.Allocator) !void {
         defer b.deinitAll();
 
         _ = try b.startVector(fb.Builder.size_byte, 8, 1);
-        var start = std.ArrayList(u8).init(alloc);
-        defer start.deinit();
+        var start: std.ArrayList(u8) = .empty;
+        defer start.deinit(alloc);
         try check(start.items, b, &i);
         for (1..12) |j| {
             try b.prepend(u8, @as(u8, @intCast(j)));
-            try start.insert(0, @intCast(j));
+            try start.insert(alloc, 0, @intCast(j));
             try check(start.items, b, &i);
         }
         _ = try b.endVector(8);
-        try start.insertSlice(0, &.{ 8, 0, 0, 0 });
+        try start.insertSlice(alloc, 0, &.{ 8, 0, 0, 0 });
         try check(start.items, b, &i);
     }
 

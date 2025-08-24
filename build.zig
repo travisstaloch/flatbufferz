@@ -280,7 +280,7 @@ pub const GenStep = struct {
     }
 
     // recursively visit path and child directories
-    fn visit(self: *const GenStep, path: []const u8, writer: anytype) !void {
+    fn visit(self: *const GenStep, path: []const u8, writer: *std.Io.Writer) !void {
         var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
         defer dir.close();
         var iter = dir.iterate();
@@ -303,14 +303,13 @@ pub const GenStep = struct {
             const name = entry.name[startidx..endidx];
             // remove illegal characters to make a zig identifier
             var buf: [256]u8 = undefined;
-            var fbs = std.io.fixedBufferStream(&buf);
-            const fbswriter = fbs.writer();
+            var fw = std.Io.Writer.fixed(&buf);
             if (self.cache_path.len < path.len) {
-                _ = try fbswriter.write(path[self.cache_path.len + 1 ..]);
-                _ = try fbswriter.writeByte('_');
+                _ = try fw.write(path[self.cache_path.len + 1 ..]);
+                _ = try fw.writeByte('_');
             }
-            _ = try fbswriter.write(name);
-            const ident = fbs.getWritten();
+            _ = try fw.write(name);
+            const ident = fw.buffered();
             if (!std.ascii.isAlphabetic(ident[0]) and ident[0] != '_') {
                 std.log.err(
                     "invalid identifier '{s}'. filename must start with alphabetic or underscore",

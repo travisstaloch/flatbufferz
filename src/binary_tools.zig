@@ -54,7 +54,7 @@ pub fn bfbsToFbs(alloc: std.mem.Allocator, filename: []const u8, writer: *std.io
     }
 }
 
-fn writeDocumentation(e: anytype, writer: anytype) !void {
+fn writeDocumentation(e: anytype, writer: *std.Io.Writer) !void {
     for (0..e.DocumentationLen()) |i| {
         if (e.Documentation(i)) |d| try writer.print("//{s}\n", .{d});
     }
@@ -62,7 +62,7 @@ fn writeDocumentation(e: anytype, writer: anytype) !void {
 
 fn writeAttributes(
     e: anytype,
-    writer: anytype,
+    writer: *std.Io.Writer,
     opts: struct { write_parens: bool = false },
 ) !void {
     const len = e.AttributesLen();

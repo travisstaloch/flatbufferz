@@ -21,7 +21,7 @@ const getFieldIdxById = util.getFieldIdxById;
 const TypenameSet = std.StringHashMap(BaseType);
 const debug = false;
 
-fn genComment(e: anytype, comment_type: enum { doc, normal }, writer: anytype) !void {
+fn genComment(e: anytype, comment_type: enum { doc, normal }, writer: *std.Io.Writer) !void {
     const prefix = switch (comment_type) {
         .doc => "///",
         .normal => "//",
@@ -91,17 +91,16 @@ pub const CamelUpperFmt = struct {
 
     pub fn format(v: CamelUpperFmt, writer: *Writer) Writer.Error!void {
         var buf: [std.fs.max_name_bytes]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&buf);
-        const bufwriter = fbs.writer();
-        _ = bufwriter.write(v.prefix) catch return error.WriteFailed;
-        util.toCamelCase(v.s, true, bufwriter) catch return error.WriteFailed;
-        _ = bufwriter.write(v.suffix) catch return error.WriteFailed;
+        var fw = std.io.Writer.fixed(&buf);
+        _ = fw.write(v.prefix) catch return error.WriteFailed;
+        util.toCamelCase(v.s, true, &fw) catch return error.WriteFailed;
+        _ = fw.write(v.suffix) catch return error.WriteFailed;
         //
         // prevent namespace collisions by appending underscores
         //
         // if a field name matches an imported namespace, append '_' to the field name
-        while (v.imports.contains(fbs.getWritten())) {
-            bufwriter.writeByte('_') catch return error.WriteFailed;
+        while (v.imports.contains(fw.buffered())) {
+            fw.writeByte('_') catch return error.WriteFailed;
         }
         // if a field has the same name as the first component of an imported namespace,
         // append '_' to the field name
@@ -109,13 +108,13 @@ pub const CamelUpperFmt = struct {
         while (true) {
             while (iter.next()) |e| {
                 const first = firstName(e.key_ptr.*);
-                if (mem.eql(u8, first, fbs.getWritten())) {
-                    bufwriter.writeByte('_') catch return error.WriteFailed;
+                if (mem.eql(u8, first, fw.buffered())) {
+                    fw.writeByte('_') catch return error.WriteFailed;
                     break;
                 }
             } else break;
         }
-        _ = try writer.write(fbs.getWritten());
+        _ = try writer.write(fw.buffered());
     }
 
     pub fn withPrefix(f: CamelUpperFmt, prefix: []const u8) CamelUpperFmt {
@@ -222,7 +221,7 @@ const TypeFmt = struct {
 /// Create a type for the enum values.
 fn genEnumType(
     e: Enum,
-    writer: anytype,
+    writer: *std.Io.Writer,
     schema: Schema,
     base_type: BaseType,
     imports: *TypenameSet,
@@ -244,11 +243,11 @@ fn genEnumType(
 }
 
 /// A single enum member.
-fn enumMember(_: Enum, ev: EnumVal, writer: anytype) !void {
+fn enumMember(_: Enum, ev: EnumVal, writer: *std.Io.Writer) !void {
     try writer.print("  {s} = {},\n", .{ ev.Name(), ev.Value() });
 }
 /// A single union member.
-fn unionMember(_: Enum, ev: EnumVal, schema: Schema, writer: anytype) !void {
+fn unionMember(_: Enum, ev: EnumVal, schema: Schema, writer: *std.Io.Writer) !void {
     if (ev.Value() == 0) {
         try writer.print("  {s},\n", .{ev.Name()});
         return;
@@ -264,7 +263,7 @@ fn genEnum(
     e: Enum,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     // Generate enum declarations.
     // TODO check if already generated
@@ -300,7 +299,7 @@ fn genNativeUnion(
     e: Enum,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const ename = e.Name();
     const last_name = lastName(ename);
@@ -361,7 +360,7 @@ fn genNativeUnion(
 }
 
 /// gen a union pack() method
-fn genNativeUnionPack(e: Enum, writer: anytype) !void {
+fn genNativeUnionPack(e: Enum, writer: *std.Io.Writer) !void {
     const ename = e.Name();
     const last_name = lastName(ename);
     try writer.print(
@@ -393,7 +392,7 @@ fn genNativeUnionPack(e: Enum, writer: anytype) !void {
 }
 
 /// gen a union unpack() method
-fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genNativeUnionUnpack(e: Enum, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const ename = e.Name();
     const last_name = lastName(ename);
 
@@ -440,19 +439,18 @@ fn typenameToPath(
     typename: []const u8,
     file_extension: []const u8,
 ) ![]const u8 {
-    var fbs = std.io.fixedBufferStream(buf);
-    const writer = fbs.writer();
+    var fw = std.Io.Writer.fixed(buf);
     if (path_prefix.len != 0) {
-        _ = try writer.write(path_prefix);
-        try writer.writeByte(std.fs.path.sep);
+        _ = try fw.write(path_prefix);
+        try fw.writeByte(std.fs.path.sep);
     }
     for (typename) |c| {
-        try writer.writeByte(if (c == '.') '/' else c);
+        try fw.writeByte(if (c == '.') '/' else c);
     }
     if (file_extension.len != 0) {
-        _ = try writer.write(file_extension);
+        _ = try fw.write(file_extension);
     }
-    return fbs.getWritten();
+    return fw.buffered();
 }
 
 /// Save out the generated code to a .fb.zig file
@@ -480,21 +478,21 @@ fn saveType(
 
     // use std.zig.Ast to parse() and render() the generated source so that it
     // looks nice. this is equivalent to running 'zig fmt' on the file.
-    const alloc = imports.allocator;
+    const arena = imports.allocator;
 
-    var src = std.ArrayList(u8).init(alloc);
-    defer src.deinit();
-    var src_ad = src.writer().adaptToNewApi();
+    var src: std.ArrayList(u8) = .empty;
+    defer src.deinit(arena);
+    var src_ad = src.writer(arena).adaptToNewApi(&.{});
     try genPrelude(bfbs_path, decl_file, basename, typename, imports, schema, &src_ad.new_interface);
     try src_ad.new_interface.writeAll(contents);
 
-    var ast = try std.zig.Ast.parse(alloc, try src.toOwnedSliceSentinel(0), .zig);
-    defer ast.deinit(alloc);
+    var ast = try std.zig.Ast.parse(arena, try src.toOwnedSliceSentinel(arena, 0), .zig);
+    defer ast.deinit(arena);
     if (ast.errors.len > 0) {
         for (ast.errors) |err| {
-            var errbuf = std.ArrayList(u8).init(alloc);
-            defer errbuf.deinit();
-            var adapter = errbuf.writer().adaptToNewApi();
+            var errbuf: std.ArrayList(u8) = .empty;
+            defer errbuf.deinit(arena);
+            var adapter = errbuf.writer(arena).adaptToNewApi(&.{});
             ast.renderError(err, &adapter.new_interface) catch {};
             // TODO print a better error message. maybe try to
             // show the source which caused the error?
@@ -506,7 +504,7 @@ fn saveType(
     const f = try std.fs.cwd().createFile(outpath, .{});
     defer f.close();
     var fwriter = f.writer(&.{});
-    try ast.render(alloc, &fwriter.interface, .{});
+    try ast.render(arena, &fwriter.interface, .{});
 }
 
 const NsEntry = union(enum) {
@@ -563,8 +561,6 @@ fn commonNsPrefixLen(a: []const u8, b: []const u8) usize {
     return pos;
 }
 
-const NsTmpArr = std.BoundedArray(u8, std.fs.max_name_bytes);
-
 pub fn RepeatedFmt(comptime rep: []const u8, comptime sep: u8) type {
     return struct {
         times: usize,
@@ -579,8 +575,8 @@ pub fn RepeatedFmt(comptime rep: []const u8, comptime sep: u8) type {
 
 fn writeNs(
     nsmap: NsEntry.Map,
-    writer: anytype,
-    path_buf: *NsTmpArr,
+    writer: *std.Io.Writer,
+    path_buf: *std.ArrayList(u8),
     typename: []const u8,
     depth: usize,
 ) !void {
@@ -589,24 +585,24 @@ fn writeNs(
         const full_name = it.key_ptr.*;
         if (debug) try writer.print(
             "// writeNs() key={s} tag={s} path_buf={s}\n",
-            .{ full_name, @tagName(it.value_ptr.*), path_buf.constSlice() },
+            .{ full_name, @tagName(it.value_ptr.*), path_buf.items },
         );
         const extension = ".fb.zig";
-        const common_prefix_len = commonNsPrefixLen(path_buf.constSlice(), typename);
+        const common_prefix_len = commonNsPrefixLen(path_buf.items, typename);
 
         switch (it.value_ptr.*) {
             .leaf => |base_ty| {
                 if (debug) try writer.print(
                     \\// typename={s} name={s} path_buf={s} common_prefix_len={} base_ty={s}
                     \\
-                , .{ typename, full_name, path_buf.constSlice(), common_prefix_len, @tagName(base_ty) });
-                if (path_buf.len > 0) {
-                    var buf: [@typeInfo(@TypeOf(path_buf.buffer)).array.len]u8 = undefined;
-                    for (path_buf.constSlice(), 0..) |c, i| {
+                , .{ typename, full_name, path_buf.items, common_prefix_len, @tagName(base_ty) });
+                if (path_buf.items.len > 0) {
+                    var buf: [ns_tmp_arr_len]u8 = undefined;
+                    for (path_buf.items, 0..) |c, i| {
                         buf[i] = if (c == '.') '/' else c;
                     }
-                    const path = if (common_prefix_len < path_buf.len)
-                        buf[common_prefix_len..path_buf.len]
+                    const path = if (common_prefix_len < path_buf.items.len)
+                        buf[common_prefix_len..path_buf.items.len]
                     else
                         buf[0..0];
 
@@ -616,9 +612,9 @@ fn writeNs(
                         mem.count(u8, typename[common_prefix_len..], ".");
 
                     if (debug) try writer.print(
-                        \\// path_buf.len={}, dots={}, path={s}
+                        \\// path_buf.items.len={}, dots={}, path={s}
                         \\
-                    , .{ path_buf.len, dots, path });
+                    , .{ path_buf.items.len, dots, path });
 
                     const dotsfmt = RepeatedFmt("..", std.fs.path.sep){ .times = dots };
 
@@ -634,7 +630,7 @@ fn writeNs(
                 } else {
                     const same = mem.eql(u8, full_name, lastName(typename));
                     if (debug) try writer.print(
-                        \\// path_buf.len == 0
+                        \\// path_buf.items.len == 0
                         \\// same={}
                         \\
                     , .{same});
@@ -661,16 +657,18 @@ fn writeNs(
                     \\const {0s} = struct {{
                     \\
                 , .{full_name});
-                const len = path_buf.len;
-                defer path_buf.len = len;
-                try path_buf.appendSlice(full_name);
-                try path_buf.append('.');
+                const len = path_buf.items.len;
+                defer path_buf.items.len = len;
+                path_buf.appendSliceAssumeCapacity(full_name);
+                path_buf.appendAssumeCapacity('.');
                 try writeNs(map, writer, path_buf, typename, depth + 1);
                 _ = try writer.write("\n};\n");
             },
         }
     }
 }
+
+const ns_tmp_arr_len = std.fs.max_name_bytes;
 
 fn genPrelude(
     bfbs_path: []const u8,
@@ -705,8 +703,9 @@ fn genPrelude(
             try populateNs(imports.allocator, &nsroot, name, it.value_ptr.*);
         }
     }
-    var arr = NsTmpArr{};
-    try writeNs(nsroot, writer, &arr, typename, 0);
+    var ns_tmp_arr_buf: [ns_tmp_arr_len]u8 = undefined;
+    var path_buf: std.ArrayList(u8) = .initBuffer(&ns_tmp_arr_buf);
+    try writeNs(nsroot, writer, &path_buf, typename, 0);
     try writer.writeByte('\n');
 
     if (isRootTable(typename, schema))
@@ -740,7 +739,7 @@ fn isStruct(object_index: i32, schema: Schema) bool {
     return o.IsStruct();
 }
 
-fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
     try writer.print(
@@ -926,7 +925,7 @@ fn genNativeTableUnpack(
     o: Object,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const oname = o.Name();
     const struct_type = lastName(oname);
@@ -1062,10 +1061,11 @@ fn genNativeTableUnpack(
 }
 
 fn genNativeStructPack(
+    arena: mem.Allocator,
     o: Object,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const olastname = lastName(o.Name());
     try writer.print(
@@ -1074,8 +1074,8 @@ fn genNativeStructPack(
         \\return {0s}.Create(__builder
     , .{olastname});
 
-    var nameprefix = NamePrefix{};
-    try structPackArgs(o, &nameprefix, schema, imports, writer);
+    var nameprefix = std.ArrayList(u8){};
+    try structPackArgs(arena, o, &nameprefix, schema, imports, writer);
     _ = try writer.write(
         \\);
         \\}
@@ -1084,11 +1084,12 @@ fn genNativeStructPack(
 }
 
 fn structPackArgs(
+    arena: mem.Allocator,
     o: Object,
-    nameprefix: *NamePrefix,
+    nameprefix: *std.ArrayList(u8),
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
@@ -1096,16 +1097,16 @@ fn structPackArgs(
         const field_ty = field.Type().?;
         if (field_ty.BaseType() == .Obj) {
             const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
-            const len = nameprefix.len;
-            defer nameprefix.len = len;
-            try nameprefix.appendSlice(field.Name());
-            try nameprefix.appendSlice(".?.");
-            try structPackArgs(o2, nameprefix, schema, imports, writer);
-        } else try writer.print(", rcv.{s}{s}", .{ nameprefix.constSlice(), field.Name() });
+            const len = nameprefix.items.len;
+            defer nameprefix.items.len = len;
+            try nameprefix.appendSlice(arena, field.Name());
+            try nameprefix.appendSlice(arena, ".?.");
+            try structPackArgs(arena, o2, nameprefix, schema, imports, writer);
+        } else try writer.print(", rcv.{s}{s}", .{ nameprefix.items, field.Name() });
     }
 }
 
-fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const olastname = lastName(o.Name());
     try writer.print(
         \\pub fn UnpackTo(rcv: {0s}, t: *{0s}T, __pack_opts: fb.common.PackOptions) !void {{
@@ -1154,7 +1155,7 @@ fn genNativeStructUnpack(o: Object, schema: Schema, imports: *TypenameSet, write
     , .{olastname});
 }
 
-fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     try writer.print(
         \\pub fn deinit(self: *{s}T, allocator: std.mem.Allocator) void {{
         \\_ = .{{self, allocator}}; 
@@ -1230,7 +1231,7 @@ fn genNativeDeinit(o: Object, _: Schema, imports: *TypenameSet, writer: anytype)
     );
 }
 
-fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genNativeStruct(arena: mem.Allocator, o: Object, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const oname = o.Name();
     const last_name = lastName(oname);
 
@@ -1316,7 +1317,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
         try genNativeTablePack(o, schema, imports, writer);
         try genNativeTableUnpack(o, schema, imports, writer);
     } else {
-        try genNativeStructPack(o, schema, imports, writer);
+        try genNativeStructPack(arena, o, schema, imports, writer);
         try genNativeStructUnpack(o, schema, imports, writer);
     }
     try genNativeDeinit(o, schema, imports, writer);
@@ -1324,7 +1325,7 @@ fn genNativeStruct(o: Object, schema: Schema, imports: *TypenameSet, writer: any
 }
 
 /// Begin a struct decl
-fn beginStruct(o: Object, writer: anytype) !void {
+fn beginStruct(o: Object, writer: *std.Io.Writer) !void {
     const oname = o.Name();
     const last_name = lastName(oname);
     try writer.print(
@@ -1335,7 +1336,7 @@ fn beginStruct(o: Object, writer: anytype) !void {
     , .{ last_name, if (o.IsStruct()) "fb.Struct" else "fb.Table" });
 }
 
-fn newRootTypeFromBuffer(o: Object, writer: anytype) !void {
+fn newRootTypeFromBuffer(o: Object, writer: *std.Io.Writer) !void {
     try writer.print(
         \\pub fn GetRootAs(buf: []u8, offset: u32) {0s} {{
         \\const n = fb.encode.read(u32, buf[offset..]);
@@ -1354,7 +1355,7 @@ fn newRootTypeFromBuffer(o: Object, writer: anytype) !void {
     , .{o.Name()});
 }
 
-fn initializeExisting(o: Object, writer: anytype) !void {
+fn initializeExisting(o: Object, writer: *std.Io.Writer) !void {
     // Initialize an existing object with other data, to avoid an allocation.
     if (o.IsStruct())
         try writer.print(
@@ -1374,7 +1375,7 @@ fn initializeExisting(o: Object, writer: anytype) !void {
         , .{lastName(o.Name())});
 }
 
-fn genTableAccessor(o: Object, writer: anytype) !void {
+fn genTableAccessor(o: Object, writer: *std.Io.Writer) !void {
     // Initialize an existing object with other data, to avoid an allocation.
     if (o.IsStruct())
         try writer.print(
@@ -1395,7 +1396,7 @@ fn genTableAccessor(o: Object, writer: anytype) !void {
 }
 
 /// Get the length of a vector.
-fn getVectorLen(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
+fn getVectorLen(o: Object, field: Field, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     try writer.print(
         \\pub fn {f}(rcv: {s}) u32 
@@ -1416,7 +1417,7 @@ fn getUByteSlice(
     o: Object,
     field: Field,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     try writer.print(
@@ -1438,7 +1439,7 @@ fn genGetter(
     ty: Type,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     switch (ty.BaseType()) {
         .String => _ = try writer.write("rcv._tab.byteVector("),
@@ -1470,7 +1471,7 @@ fn genGetter(
 
 /// Most field accessors need to retrieve and test the field offset first,
 /// this is the prefix code for that.
-fn offsetPrefix(field: Field, writer: anytype) !void {
+fn offsetPrefix(field: Field, writer: *std.Io.Writer) !void {
     try writer.print(
         \\{{
         \\const o = rcv._tab.offset({});
@@ -1488,7 +1489,7 @@ fn genConstant(
     field_base_ty: BaseType,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     if (debug) try writer.print(
         \\// genConstant() field.Name()={s} field_base_ty={}
@@ -1566,18 +1567,16 @@ fn genConstant(
     }
 }
 
-const NamePrefix = std.BoundedArray(u8, std.fs.max_name_bytes);
-
 /// Recursively generate arguments for a constructor, to deal with nested
 /// structs.
 fn structBuilderArgs(
+    arena: mem.Allocator,
     o: Object,
-    nameprefix: *NamePrefix,
-    alloc: mem.Allocator,
+    nameprefix: *std.ArrayList(u8),
     arg_names: *std.StringHashMapUnmanaged(void),
     imports: *TypenameSet,
     schema: Schema,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     var i: u32 = 0;
     while (i < o.FieldsLen()) : (i += 1) {
@@ -1589,14 +1588,14 @@ fn structBuilderArgs(
             // don't clash, and to make it obvious these arguments are constructing
             // a nested struct, prefix the name with the field name.
             const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
-            const len = nameprefix.len;
-            defer nameprefix.len = len;
-            try nameprefix.appendSlice(field.Name());
-            try nameprefix.append('_');
+            const len = nameprefix.items.len;
+            defer nameprefix.items.len = len;
+            try nameprefix.appendSlice(arena, field.Name());
+            try nameprefix.append(arena, '_');
             try structBuilderArgs(
+                arena,
                 o2,
                 nameprefix,
-                alloc,
                 arg_names,
                 imports,
                 schema,
@@ -1604,14 +1603,14 @@ fn structBuilderArgs(
             );
         } else {
             const fname = fieldNameFmt(field.Name(), imports);
-            var argname = std.ArrayList(u8).init(alloc);
-            try argname.appendSlice(nameprefix.constSlice());
-            try argname.appendSlice(fname.fname);
+            var argname: std.ArrayList(u8) = .empty;
+            try argname.appendSlice(arena, nameprefix.items);
+            try argname.appendSlice(arena, fname.fname);
 
             while (true) {
-                const gop = try arg_names.getOrPut(alloc, argname.items);
+                const gop = try arg_names.getOrPut(arena, argname.items);
                 if (gop.found_existing)
-                    try argname.append('_')
+                    try argname.append(arena, '_')
                 else
                     break;
             }
@@ -1636,7 +1635,7 @@ fn genMethod(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     if (fb.idl.isScalar(field_ty.BaseType())) {
@@ -1664,11 +1663,12 @@ fn genMethod(
 /// Recursively generate struct construction statements and instert manual
 /// padding.
 fn structBuilderBody(
+    arena: mem.Allocator,
     o: Object,
-    nameprefix: *NamePrefix,
+    nameprefix: *std.ArrayList(u8),
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     try writer.print(
         \\try __builder.prep({}, {});
@@ -1692,37 +1692,37 @@ fn structBuilderBody(
         const field_base_ty = field_ty.BaseType();
         if (field_base_ty == .Obj and isStruct(field_ty.Index(), schema)) {
             const o2 = schema.Objects(@as(u32, @bitCast(field_ty.Index()))).?;
-            const len = nameprefix.len;
-            defer nameprefix.len = len;
-            try nameprefix.appendSlice(field.Name());
-            try nameprefix.append('_');
-            try structBuilderBody(o2, nameprefix, schema, imports, writer);
+            const len = nameprefix.items.len;
+            defer nameprefix.items.len = len;
+            try nameprefix.appendSlice(arena, field.Name());
+            try nameprefix.append(arena, '_');
+            try structBuilderBody(arena, o2, nameprefix, schema, imports, writer);
         } else {
             _ = try writer.write("try __builder.prepend");
             try genMethod(field, schema, imports, writer);
             try writer.print(
                 \\ {s}{s});
                 \\
-            , .{ nameprefix.constSlice(), field.Name() });
+            , .{ nameprefix.items, field.Name() });
         }
     }
 }
 
 /// Create a struct with a builder and the struct's arguments.
-fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     _ = try writer.write(
         \\pub fn Create(__builder: *Builder
     );
-    var nameprefix = NamePrefix{};
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    var nameprefix = std.ArrayList(u8){};
+    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
     var arg_names = std.StringHashMapUnmanaged(void){};
-    try arg_names.put(alloc, "__builder", {});
-    try structBuilderArgs(o, &nameprefix, alloc, &arg_names, imports, schema, writer);
+    try arg_names.put(arena, "__builder", {});
+    try structBuilderArgs(arena, o, &nameprefix, &arg_names, imports, schema, writer);
     _ = try writer.write(") !u32 {\n");
-    nameprefix.len = 0;
-    try structBuilderBody(o, &nameprefix, schema, imports, writer);
+    nameprefix.items.len = 0;
+    try structBuilderBody(arena, o, &nameprefix, schema, imports, writer);
     _ = try writer.write(
         \\return __builder.offset();
         \\}
@@ -1731,7 +1731,7 @@ fn genStructBuilder(o: Object, schema: Schema, imports: *TypenameSet, writer: an
 }
 
 // Get the value of a table's starting offset.
-fn getStartOfTable(o: Object, writer: anytype) !void {
+fn getStartOfTable(o: Object, writer: *std.Io.Writer) !void {
     try writer.print(
         \\pub fn Start(__builder: *Builder) !void {{
         \\try __builder.startObject({});
@@ -1745,7 +1745,7 @@ fn genTableBuilders(
     o: Object,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     try getStartOfTable(o, writer);
 
@@ -1776,7 +1776,7 @@ fn getScalarFieldOfStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -1805,7 +1805,7 @@ fn getScalarFieldOfTable(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -1856,7 +1856,7 @@ fn getStringField(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -1893,7 +1893,7 @@ fn getStructFieldOfStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const oname = o.Name();
@@ -1920,7 +1920,7 @@ fn getStructFieldOfTable(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -1958,7 +1958,7 @@ fn getUnionField(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -2008,7 +2008,7 @@ fn getMemberOfVectorOfStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -2058,7 +2058,7 @@ fn getMemberOfVectorOfStructByKey(
     key_field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2099,7 +2099,7 @@ fn getMemberOfVectorOfNonStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
@@ -2182,11 +2182,10 @@ fn FmtWithSuffix(comptime suffix: []const u8) type {
         name: []const u8,
         pub fn format(value: @This(), writer: *Writer) Writer.Error!void {
             var buf: [std.fs.max_name_bytes]u8 = undefined;
-            var fbs = std.io.fixedBufferStream(&buf);
-            const bufwriter = fbs.writer();
-            _ = bufwriter.write(value.name) catch return error.WriteFailed;
-            _ = bufwriter.write(suffix) catch return error.WriteFailed;
-            const full_name = fbs.getWritten();
+            var fw = std.Io.Writer.fixed(&buf);
+            _ = fw.write(value.name) catch return error.WriteFailed;
+            _ = fw.write(suffix) catch return error.WriteFailed;
+            const full_name = fw.buffered();
             if (std.zig.Token.getKeyword(full_name) != null or
                 std.zig.primitives.isPrimitive(full_name))
             {
@@ -2205,7 +2204,7 @@ fn buildFieldOfTable(
     schema: Schema,
     offset: u16,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname = fieldNameFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2262,7 +2261,7 @@ fn buildFieldOfTable(
 }
 
 /// Set the value of one of the members of a table's vector.
-fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *TypenameSet, writer: anytype) !void {
+fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
     const ele = field_ty.Element();
@@ -2293,7 +2292,7 @@ fn buildVectorOfTable(_: Object, field: Field, schema: Schema, imports: *Typenam
 }
 
 /// Get the offset of the end of a table.
-fn getEndOffsetOnTable(_: Object, writer: anytype) !void {
+fn getEndOffsetOnTable(_: Object, writer: *std.Io.Writer) !void {
     try writer.print(
         \\pub fn End(__builder: *Builder) !u32 {{
         \\return __builder.endObject();
@@ -2309,7 +2308,7 @@ fn genStructAccessor(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
@@ -2395,7 +2394,7 @@ fn mutateScalarFieldOfStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2420,7 +2419,7 @@ fn mutateScalarFieldOfTable(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2445,7 +2444,7 @@ fn mutateElementOfVectorOfNonStruct(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2471,7 +2470,7 @@ fn genStructMutator(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const field_ty = field.Type().?;
     const field_base_ty = field_ty.BaseType();
@@ -2489,16 +2488,17 @@ fn genStructMutator(
 
 /// Generate struct or table methods.
 fn genStruct(
+    arena: mem.Allocator,
     o: Object,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     // TODO if (o.generated) return;
 
     try genComment(o, .doc, writer);
 
-    try genNativeStruct(o, schema, imports, writer);
+    try genNativeStruct(arena, o, schema, imports, writer);
 
     try beginStruct(o, writer);
 
@@ -2592,7 +2592,7 @@ fn genStruct(
     );
 }
 
-fn genObjectTest(o: Object, writer: anytype) !void {
+fn genObjectTest(o: Object, writer: *std.Io.Writer) !void {
     const lastname = lastName(o.Name());
 
     try writer.print(
@@ -2629,7 +2629,7 @@ fn genObjectTest(o: Object, writer: anytype) !void {
     , .{});
 }
 
-fn genEnumTest(e: Enum, writer: anytype) !void {
+fn genEnumTest(e: Enum, writer: *std.Io.Writer) !void {
     if (!e.IsUnion()) return;
     const lastname = lastName(e.Name());
     try writer.print(
@@ -2653,7 +2653,7 @@ fn genEnumTest(e: Enum, writer: anytype) !void {
     , .{lastname});
 }
 
-fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: anytype) !void {
+fn genKeyCompare(o: Object, field: Field, imports: *TypenameSet, writer: *std.Io.Writer) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
     const base_ty = field_ty.BaseType();
@@ -2686,7 +2686,7 @@ fn genLookupByKey(
     field: Field,
     schema: Schema,
     imports: *TypenameSet,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
     const fname_camel_upper = camelUpperFmt(field.Name(), imports);
     const field_ty = field.Type().?;
@@ -2743,7 +2743,7 @@ fn genLookupByKey(
 }
 
 pub fn generate(
-    alloc: mem.Allocator,
+    arena: mem.Allocator,
     bfbs_path: []const u8,
     gen_path: []const u8,
     basename: []const u8,
@@ -2763,12 +2763,12 @@ pub fn generate(
     std.log.debug("file_ident={s}", .{file_ident});
     const f = try std.fs.cwd().openFile(bfbs_path, .{});
     defer f.close();
-    const content = try f.readToEndAlloc(alloc, std.math.maxInt(u16));
-    defer alloc.free(content);
+    const content = try f.readToEndAlloc(arena, std.math.maxInt(u16));
+    defer arena.free(content);
     const schema = Schema.GetRootAs(content, 0);
     const needs_imports = false;
 
-    var imports = TypenameSet.init(alloc);
+    var imports = TypenameSet.init(arena);
     std.log.debug("schema.EnumsLen()={}", .{schema.EnumsLen()});
     for (0..schema.EnumsLen()) |i| {
         const e = schema.Enums(i).?;
@@ -2778,8 +2778,9 @@ pub fn generate(
         if (!same_file) continue;
 
         var enumcode: std.ArrayListUnmanaged(u8) = .{};
-        defer enumcode.deinit(alloc);
-        const ewriter = enumcode.writer(alloc);
+        defer enumcode.deinit(arena);
+        var eadapter = enumcode.writer(arena).adaptToNewApi(&.{});
+        const ewriter = &eadapter.new_interface;
         imports.clearRetainingCapacity();
         try genEnum(e, schema, &imports, ewriter);
         if (e.IsUnion()) {
@@ -2813,10 +2814,11 @@ pub fn generate(
 
         std.log.info("writing struct {s} {s}", .{ o.Name(), decl_file });
         var structcode: std.ArrayListUnmanaged(u8) = .{};
-        defer structcode.deinit(alloc);
-        const swriter = structcode.writer(alloc);
+        defer structcode.deinit(arena);
+        var sadapter = structcode.writer(arena).adaptToNewApi(&.{});
+        const swriter = &sadapter.new_interface;
         imports.clearRetainingCapacity();
-        try genStruct(o, schema, &imports, swriter);
+        try genStruct(arena, o, schema, &imports, swriter);
         try genObjectTest(o, swriter);
         try imports.put(o.Name(), .Obj);
         try saveType(

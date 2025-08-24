@@ -15,7 +15,7 @@ pub fn hasExtension(extension: []const u8, path: []const u8) bool {
     return mem.eql(u8, std.fs.path.extension(path), extension);
 }
 
-pub fn toCamelCase(input: []const u8, first: bool, writer: anytype) !void {
+pub fn toCamelCase(input: []const u8, first: bool, writer: *std.Io.Writer) !void {
     var i: usize = 0;
     while (i < input.len) : (i += 1) {
         const c = input[i];

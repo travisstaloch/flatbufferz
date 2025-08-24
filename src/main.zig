@@ -34,32 +34,33 @@ fn usage() void {
 }
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const alloc = arena.allocator();
+    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
 
     // parse cli args
-    var args = try std.process.argsWithAllocator(alloc);
+    var args = try std.process.argsWithAllocator(arena);
     defer args.deinit();
-    var res = flagset.parseFromIter(&flags, args, .{ .allocator = alloc }) catch |e| switch (e) {
+    var res = flagset.parseFromIter(&flags, args, .{ .allocator = arena }) catch |e| switch (e) {
         error.HelpRequested => {
             usage();
             return;
         },
         else => return e,
     };
-    defer res.deinit(alloc);
+    defer res.deinit(arena);
 
     var stdout = std.fs.File.stdout().writer(&.{});
 
     if (res.parsed.@"bfbs-to-fbs") {
         while (res.unparsed_args.next()) |filename| {
             try util.expectExtension(".bfbs", filename);
-            try fb.binary_tools.bfbsToFbs(alloc, filename, &stdout.interface);
+            try fb.binary_tools.bfbsToFbs(arena, filename, &stdout.interface);
         }
     } else {
         // setup a flatc command args used to gen .bfbs from .fbs args
-        var argv = std.ArrayList([]const u8).init(alloc);
-        try argv.appendSlice(&.{
+        var argv: std.ArrayList([]const u8) = .empty;
+        try argv.appendSlice(arena, &.{
             build_options.flatc_exe_path,
             "-b",
             "--schema",
@@ -70,7 +71,7 @@ pub fn main() !void {
             // "--bfbs-filenames", // TODO consider providing this arg?
         });
         for (res.parsed.@"include-dir".items) |inc|
-            try argv.appendSlice(&.{ "-I", inc });
+            try argv.appendSlice(arena, &.{ "-I", inc });
 
         var tmp_unparsed = res.unparsed_args;
         if (tmp_unparsed.next() == null) {
@@ -89,11 +90,11 @@ pub fn main() !void {
             const bfbs_path = if (is_fbs) blk: {
                 // remove previous ["-o", gen_path_full, filename] args
                 if (i != 0) argv.items.len -= 3;
-                const gen_path_full = try std.fs.path.join(alloc, &.{ gen_path, dirname });
-                try argv.appendSlice(&.{ "-o", gen_path_full });
-                try argv.append(filename);
+                const gen_path_full = try std.fs.path.join(arena, &.{ gen_path, dirname });
+                try argv.appendSlice(arena, &.{ "-o", gen_path_full });
+                try argv.append(arena, filename);
                 std.log.debug("argv={s}\n", .{argv.items});
-                const exec_res = try std.process.Child.run(.{ .allocator = alloc, .argv = argv.items });
+                const exec_res = try std.process.Child.run(.{ .allocator = arena, .argv = argv.items });
                 // std.debug.print("term={}\n", .{exec_res.term});
                 // std.debug.print("stderr={s}\n", .{exec_res.stderr});
                 // std.debug.print("stdout={s}\n", .{exec_res.stdout});
@@ -105,8 +106,8 @@ pub fn main() !void {
                     std.process.exit(1);
                 }
 
-                const bfbs_filename = try std.mem.concat(alloc, u8, &.{ filename_noext, ".bfbs" });
-                const bfbs_path = try std.fs.path.join(alloc, &.{ gen_path, bfbs_filename });
+                const bfbs_filename = try std.mem.concat(arena, u8, &.{ filename_noext, ".bfbs" });
+                const bfbs_path = try std.fs.path.join(arena, &.{ gen_path, bfbs_filename });
                 break :blk bfbs_path;
             } else if (is_bfbs)
                 filename
@@ -117,7 +118,7 @@ pub fn main() !void {
                 );
                 std.process.exit(1);
             };
-            try fb.codegen.generate(alloc, bfbs_path, gen_path, filename_noext, res.parsed);
+            try fb.codegen.generate(arena, bfbs_path, gen_path, filename_noext, res.parsed);
         }
     }
 }

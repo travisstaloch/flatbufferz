@@ -204,7 +204,7 @@ pub fn build(b: *std.Build) !void {
 pub const GenStep = struct {
     step: std.Build.Step,
     b: *std.Build,
-    sources: std.ArrayListUnmanaged(std.Build.GeneratedFile) = .{},
+    sources: std.ArrayList(std.Build.GeneratedFile) = .{},
     cache_path: []const u8,
     lib_file: std.Build.GeneratedFile,
     module: *std.Build.Module,
@@ -277,6 +277,7 @@ pub const GenStep = struct {
         var fwriter = file.writer(&.{});
 
         try self.visit(self.cache_path, &fwriter.interface);
+        try fwriter.interface.flush();
     }
 
     // recursively visit path and child directories

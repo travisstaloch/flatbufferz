@@ -19,11 +19,11 @@ const todo = common.todo;
 const Builder = @This();
 
 alloc: mem.Allocator,
-bytes: std.ArrayListUnmanaged(u8) = .{},
+bytes: std.ArrayList(u8) = .{},
 minalign: u32,
-vtable: std.ArrayListUnmanaged(u32) = .{},
+vtable: std.ArrayList(u32) = .{},
 object_end: u32,
-vtables: std.ArrayListUnmanaged(u32) = .{},
+vtables: std.ArrayList(u32) = .{},
 head: u32,
 nested: bool,
 finished: bool,
@@ -67,7 +67,7 @@ pub fn initCapacity(alloc: mem.Allocator, capacity: usize) !Builder {
         .head = 0,
         .nested = false,
         .finished = false,
-        .bytes = try std.ArrayListUnmanaged(u8).initCapacity(alloc, capacity),
+        .bytes = try std.ArrayList(u8).initCapacity(alloc, capacity),
     };
 }
 

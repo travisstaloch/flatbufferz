@@ -50,7 +50,10 @@ pub fn main() !void {
     };
     defer res.deinit(arena);
 
-    var stdout = std.fs.File.stdout().writer(&.{});
+    const stdoutf = std.fs.File.stdout();
+    var stdout_buf: [1024]u8 = undefined;
+    var stdout = stdoutf.writer(&stdout_buf);
+    defer stdout.interface.flush() catch {};
 
     if (res.parsed.@"bfbs-to-fbs") {
         while (res.unparsed_args.next()) |filename| {

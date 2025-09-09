@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const mem = std.mem;
-const Writer = std.io.Writer;
+const Writer = std.Io.Writer;
 const fb = @import("flatbufferz");
 const refl = fb.reflection;
 const Schema = refl.Schema;
@@ -91,7 +91,7 @@ pub const CamelUpperFmt = struct {
 
     pub fn format(v: CamelUpperFmt, writer: *Writer) Writer.Error!void {
         var buf: [std.fs.max_name_bytes]u8 = undefined;
-        var fw = std.io.Writer.fixed(&buf);
+        var fw = std.Io.Writer.fixed(&buf);
         _ = fw.write(v.prefix) catch return error.WriteFailed;
         util.toCamelCase(v.s, true, &fw) catch return error.WriteFailed;
         _ = fw.write(v.suffix) catch return error.WriteFailed;
@@ -480,23 +480,25 @@ fn saveType(
     // looks nice. this is equivalent to running 'zig fmt' on the file.
     const arena = imports.allocator;
 
-    var src: std.ArrayList(u8) = .empty;
-    defer src.deinit(arena);
-    var src_ad = src.writer(arena).adaptToNewApi(&.{});
-    try genPrelude(bfbs_path, decl_file, basename, typename, imports, schema, &src_ad.new_interface);
-    try src_ad.new_interface.writeAll(contents);
+    var src_wa = std.Io.Writer.Allocating.init(arena);
+    try genPrelude(bfbs_path, decl_file, basename, typename, imports, schema, &src_wa.writer);
+    try src_wa.writer.writeAll(contents);
+    try src_wa.writer.writeByte(0);
+    try src_wa.writer.flush();
+    const s = src_wa.written();
+    const src = s[0 .. s.len - 1 :0];
 
-    var ast = try std.zig.Ast.parse(arena, try src.toOwnedSliceSentinel(arena, 0), .zig);
+    var ast = try std.zig.Ast.parse(arena, src, .zig);
     defer ast.deinit(arena);
     if (ast.errors.len > 0) {
         for (ast.errors) |err| {
-            var errbuf: std.ArrayList(u8) = .empty;
-            defer errbuf.deinit(arena);
-            var adapter = errbuf.writer(arena).adaptToNewApi(&.{});
-            ast.renderError(err, &adapter.new_interface) catch {};
+            var wa = std.Io.Writer.Allocating.init(arena);
+            defer wa.deinit();
+            ast.renderError(err, &wa.writer) catch {};
+            try wa.writer.flush();
             // TODO print a better error message. maybe try to
             // show the source which caused the error?
-            std.log.err("formatting {s}: {s}", .{ typename, errbuf.items });
+            std.log.err("formatting {s}: {s}", .{ typename, wa.written() });
         }
         return error.InvalidGeneratedCode;
     }
@@ -505,6 +507,7 @@ fn saveType(
     defer f.close();
     var fwriter = f.writer(&.{});
     try ast.render(arena, &fwriter.interface, .{});
+    try fwriter.interface.flush();
 }
 
 const NsEntry = union(enum) {
@@ -745,7 +748,7 @@ fn genNativeTablePack(o: Object, schema: Schema, imports: *TypenameSet, writer: 
     try writer.print(
         \\pub fn Pack(rcv: {s}T, __builder: *Builder, __pack_opts: fb.common.PackOptions) fb.common.PackError!u32 {{
         \\_ = .{{__pack_opts}};
-        \\var __tmp_offsets = std.ArrayListUnmanaged(u32){{}};
+        \\var __tmp_offsets = std.ArrayList(u32){{}};
         \\defer if(__pack_opts.allocator) |alloc| __tmp_offsets.deinit(alloc);
         \\
     , .{struct_type});
@@ -990,7 +993,7 @@ fn genNativeTableUnpack(
                 if (ele == .Obj)
                     try writer.print(
                         \\const {3f} = rcv.{1f}();
-                        \\t.{0f} = try std.ArrayListUnmanaged({2f}T).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3f})));
+                        \\t.{0f} = try std.ArrayList({2f}T).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3f})));
                         \\t.{0f}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
@@ -1001,7 +1004,7 @@ fn genNativeTableUnpack(
                 else
                     try writer.print(
                         \\const {3f} = rcv.{1f}();
-                        \\t.{0f} = try std.ArrayListUnmanaged({2f}).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3f})));
+                        \\t.{0f} = try std.ArrayList({2f}).initCapacity(__pack_opts.allocator.?, @as(u32, @bitCast({3f})));
                         \\t.{0f}.expandToCapacity();
                         \\{{
                         \\var j: u32 = 0;
@@ -1263,7 +1266,7 @@ fn genNativeStruct(arena: mem.Allocator, o: Object, schema: Schema, imports: *Ty
                     \\[]const u8 = ""
                 );
             } else {
-                try writer.print("std.ArrayListUnmanaged({f}", .{fty_fmt});
+                try writer.print("std.ArrayList({f}", .{fty_fmt});
                 if (ele == .Obj or ele == .Union) _ = try writer.write("T");
                 _ = try writer.write(") = .{}");
             }
@@ -2763,7 +2766,8 @@ pub fn generate(
     std.log.debug("file_ident={s}", .{file_ident});
     const f = try std.fs.cwd().openFile(bfbs_path, .{});
     defer f.close();
-    const content = try f.readToEndAlloc(arena, std.math.maxInt(u16));
+    var freader = f.reader(&.{});
+    const content = try freader.interface.allocRemaining(arena, .limited(std.math.maxInt(u16)));
     defer arena.free(content);
     const schema = Schema.GetRootAs(content, 0);
     const needs_imports = false;
@@ -2777,10 +2781,9 @@ pub fn generate(
         std.log.debug("same_file={} decl_file={s}", .{ same_file, decl_file });
         if (!same_file) continue;
 
-        var enumcode: std.ArrayListUnmanaged(u8) = .{};
-        defer enumcode.deinit(arena);
-        var eadapter = enumcode.writer(arena).adaptToNewApi(&.{});
-        const ewriter = &eadapter.new_interface;
+        var enumcode: std.Io.Writer.Allocating = .init(arena);
+        defer enumcode.deinit();
+        const ewriter = &enumcode.writer;
         imports.clearRetainingCapacity();
         try genEnum(e, schema, &imports, ewriter);
         if (e.IsUnion()) {
@@ -2790,6 +2793,7 @@ pub fn generate(
             _ = try ewriter.write("};\n\n");
         }
         try genEnumTest(e, ewriter);
+        try ewriter.flush();
 
         try imports.put(e.Name(), if (e.IsUnion()) .Union else e.UnderlyingType().?.BaseType());
         try saveType(
@@ -2798,7 +2802,7 @@ pub fn generate(
             decl_file,
             basename,
             e.Name(),
-            enumcode.items,
+            enumcode.written(),
             needs_imports,
             imports,
             .enum_,
@@ -2813,13 +2817,13 @@ pub fn generate(
         if (!same_file) continue;
 
         std.log.info("writing struct {s} {s}", .{ o.Name(), decl_file });
-        var structcode: std.ArrayListUnmanaged(u8) = .{};
-        defer structcode.deinit(arena);
-        var sadapter = structcode.writer(arena).adaptToNewApi(&.{});
-        const swriter = &sadapter.new_interface;
+
+        var structcode_wa = std.Io.Writer.Allocating.init(arena);
+        const swriter = &structcode_wa.writer;
         imports.clearRetainingCapacity();
         try genStruct(arena, o, schema, &imports, swriter);
         try genObjectTest(o, swriter);
+        try swriter.flush();
         try imports.put(o.Name(), .Obj);
         try saveType(
             gen_path,
@@ -2827,7 +2831,7 @@ pub fn generate(
             decl_file,
             basename,
             o.Name(),
-            structcode.items,
+            structcode_wa.written(),
             needs_imports,
             imports,
             .struct_,
